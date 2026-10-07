@@ -4,6 +4,10 @@
 Optional key check_ran_marker: a non-empty regex matched against the check
 output tail to tell a test failure (exit 1 + match) from a check that did not
 run. Default when absent: passed|failed|error.
+
+Optional key check_timeout_seconds: a positive finite number of seconds the
+check may run before it counts as not run. Default when absent: 120. The Rust
+starter sets 600; the other starters omit it.
 """
 from __future__ import annotations
 
@@ -47,6 +51,7 @@ def starter(directory: Path) -> tuple[dict, str]:
         "check_command": command,
         "check_ran_marker": marker,
         "check_fail_exits": fail_exits,
+        **({"check_timeout_seconds": 600} if name == "rust" else {}),
         "allowed_paths": allowed,
         "max_attempts_per_task": 3,
         "max_elapsed_seconds_per_tick": 600,
@@ -112,6 +117,8 @@ def validate(cfg) -> list[str]:
             or len(set(fe)) != len(fe)
         ):
             errors.append("check_fail_exits must be a non-empty list of distinct integers in 1..255 (default [1])")
+    if "check_timeout_seconds" in cfg and not positive_number(cfg["check_timeout_seconds"]):
+        errors.append("check_timeout_seconds must be a positive finite number (default 120)")
     if "check_ran_marker" in cfg:
         marker = cfg["check_ran_marker"]
         if not isinstance(marker, str) or not marker:

@@ -1,4 +1,5 @@
 import json
+import subprocess
 
 
 def take(run, root):
@@ -70,3 +71,57 @@ def test_scope_non_object_json_exits_2(run, tmp_path):
     after = tmp_path / "a.json"; after.write_text("{}")
     r = run("snapshot", "scope", before, after, "--allowed", "src/")
     assert r.returncode == 2 and "error:" in r.stderr
+
+
+def git(cwd, *args):
+    return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
+
+
+def git_repo(tmp_path):
+    root = tmp_path / "ws"
+    root.mkdir()
+    git(root, "init", "-q")
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "t")
+    write(root, ".gitignore", "target/\n")
+    write(root, "src/a.py", "1")
+    write(root, "loop.json", "{}")
+    write(root, "target/out.bin", "build 1")
+    git(root, "add", "."); git(root, "commit", "-qm", "base")
+    return root
+
+
+def scope_of(run, tmp_path, before, after):
+    b = tmp_path / "before.json"; b.write_text(json.dumps(before))
+    a = tmp_path / "after.json"; a.write_text(json.dumps(after))
+    r = run("snapshot", "scope", b, a, "--allowed", "src/")
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
+
+
+def test_git_ignored_build_output_is_not_a_violation(run, tmp_path):
+    root = git_repo(tmp_path)
+    before = take(run, root)
+    assert "target/out.bin" not in before and "src/a.py" in before and ".gitignore" in before
+    write(root, "target/out.bin", "build 2")
+    write(root, "target/new.bin", "x")
+    out = scope_of(run, tmp_path, before, take(run, root))
+    assert out == {"changed": [], "violations": []}
+
+
+def test_git_unignored_new_file_outside_allowed_is_violation(run, tmp_path):
+    root = git_repo(tmp_path)
+    before = take(run, root)
+    write(root, "src/b.py", "1")
+    write(root, "notes.txt", "x")
+    write(root, ".loop/x", "x")
+    out = scope_of(run, tmp_path, before, take(run, root))
+    assert out == {"changed": ["notes.txt", "src/b.py"], "violations": ["notes.txt"]}
+
+
+def test_git_deleted_tracked_file_is_changed(run, tmp_path):
+    root = git_repo(tmp_path)
+    before = take(run, root)
+    (root / "loop.json").unlink()
+    out = scope_of(run, tmp_path, before, take(run, root))
+    assert out == {"changed": ["loop.json"], "violations": ["loop.json"]}

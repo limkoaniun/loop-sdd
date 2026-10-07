@@ -143,3 +143,20 @@ def test_check_fail_exits_validated(run, tmp_path, good_config):
         assert r.returncode == 2 and "check_fail_exits" in r.stderr, bad
     good_config["check_fail_exits"] = [1, 101]
     assert run("loopcfg", "validate", write(tmp_path, good_config)).returncode == 0
+
+
+def test_check_timeout_seconds_validated(run, tmp_path, good_config):
+    for bad in (0, "120", True, -5):
+        good_config["check_timeout_seconds"] = bad
+        r = run("loopcfg", "validate", write(tmp_path, good_config))
+        assert r.returncode == 2 and "check_timeout_seconds" in r.stderr, bad
+    good_config["check_timeout_seconds"] = 600
+    assert run("loopcfg", "validate", write(tmp_path, good_config)).returncode == 0
+
+
+def test_check_timeout_seconds_only_in_rust_starter(run, tmp_path):
+    rust = tmp_path / "rust"; rust.mkdir(); (rust / "Cargo.toml").write_text("[package]\n")
+    py = tmp_path / "py"; py.mkdir(); (py / "pyproject.toml").write_text("")
+    run("loopcfg", "init", rust); run("loopcfg", "init", py)
+    assert json.loads((rust / "loop.json").read_text())["check_timeout_seconds"] == 600
+    assert "check_timeout_seconds" not in json.loads((py / "loop.json").read_text())

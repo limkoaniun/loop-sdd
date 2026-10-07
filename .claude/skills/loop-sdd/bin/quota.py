@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """Remaining-quota readings for Claude and Codex, and seat routing. Usage:
   quota.py read [--claude-cache PATH] [--codex-sessions DIR] [--now EPOCH]
-  quota.py choose --readings FILE --config loop.json --seat NAME [--override FILE] [--seat-overrides JSON] [--now EPOCH]
+  quota.py choose --readings FILE --config loop.json --seat NAME [--override FILE] [--seat-overrides JSON]
+                  [--avoid BACKEND] [--now EPOCH]
 
 choose: a noop config seat always returns noop (task seat_overrides are ignored).
 Under policy balance, the fresh candidate under switch_at with the lower seven_day
 wins; when no candidate is fresh and under switch_at the answer is backend null,
-reason quota (balance never picks blind). Under policy fixed, the backend is used
+reason quota (balance never picks blind). --avoid BACKEND applies only under
+balance and only when BACKEND is one of the seat's two candidates: the other
+candidate wins if it is not excluded, known, and under switch_at; otherwise the
+normal balance rules run (reason "avoid unmet" when the avoided side wins).
+Under policy fixed --avoid is ignored and the backend is used
 (blind when its quota is unknown) unless it is over switch_at or excluded, then
 the fallback if known and under switch_at, else null.
 """
@@ -129,7 +134,8 @@ def is_over(reading: dict, switch_at: float) -> bool:
     return any(isinstance(v, (int, float)) and v >= switch_at for v in (reading.get("five_hour"), reading.get("seven_day")))
 
 
-def choose(readings: dict, cfg: dict, seat_name: str, override: dict, now: float, seat_overrides: dict) -> dict:
+def choose(readings: dict, cfg: dict, seat_name: str, override: dict, now: float, seat_overrides: dict,
+           avoid: str | None = None) -> dict:
     if cfg["seats"][seat_name].get("backend") == "noop":
         return {"backend": "noop", "reason": "noop seat", "blind": False, "candidates": ["noop"]}
     seat = {**cfg["seats"][seat_name], **seat_overrides.get(seat_name, {})}
@@ -145,9 +151,15 @@ def choose(readings: dict, cfg: dict, seat_name: str, override: dict, now: float
     result = {"blind": False, "candidates": candidates}
     if routing["policy"] == "balance":
         fresh = [b for b in candidates if is_known(readings.get(b), stale_after) and not is_over(readings[b], switch_at)]
+        avoiding = avoid in (backend, fallback)
+        if avoiding:
+            other = fallback if avoid == backend else backend
+            if other in fresh:
+                return {**result, "backend": other, "reason": f"balance: avoid {avoid} (cross-model review)"}
         if fresh:
             pick = min(fresh, key=lambda b: (readings[b]["seven_day"], 0 if b == backend else 1))
-            return {**result, "backend": pick, "reason": f"balance: lower seven_day ({readings[pick]['seven_day']}%)"}
+            prefix = "balance: avoid unmet, " if avoiding and pick == avoid else "balance: "
+            return {**result, "backend": pick, "reason": f"{prefix}lower seven_day ({readings[pick]['seven_day']}%)"}
         return {**result, "backend": None, "reason": "quota"}
     if backend in candidates:
         known = is_known(readings.get(backend), stale_after)
@@ -185,7 +197,7 @@ def cmd_choose(args) -> int:
         print(f"error: unknown seat {args.seat}", file=sys.stderr)
         return 2
     now = args.now if args.now is not None else time.time()
-    print(json.dumps(choose(readings, cfg, args.seat, override, now, seat_overrides)))
+    print(json.dumps(choose(readings, cfg, args.seat, override, now, seat_overrides, args.avoid)))
     return 0
 
 
@@ -202,6 +214,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--seat", required=True)
     p.add_argument("--override", type=Path)
     p.add_argument("--seat-overrides")
+    p.add_argument("--avoid")
     p.add_argument("--now", type=float)
     args = parser.parse_args(argv)
     if args.cmd == "read":

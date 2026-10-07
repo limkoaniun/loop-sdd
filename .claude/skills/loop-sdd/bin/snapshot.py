@@ -2,6 +2,10 @@
 """Hash a tree and compare two hashes against allowed paths. Usage:
   snapshot.py take ROOT
   snapshot.py scope BEFORE AFTER --allowed P [P ...]
+
+take: inside a git work tree the file list is git's tracked plus untracked,
+not-ignored files (so ignored build output never counts); elsewhere it walks
+the tree. Either way SKIP directories and symlinks are left out.
 """
 from __future__ import annotations
 
@@ -9,14 +13,39 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 SKIP = {".git", ".loop", "__pycache__", ".pytest_cache"}
 
 
+def git_files(root: Path) -> list[str] | None:
+    """Tracked plus untracked-not-ignored files under ROOT, or None outside a git work tree."""
+    try:
+        inside = subprocess.run(["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
+                                capture_output=True, text=True)
+    except OSError:
+        return None
+    if inside.returncode != 0:
+        return None
+    listed = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                            capture_output=True, check=True)
+    return [p for p in listed.stdout.decode("utf-8", errors="surrogateescape").split("\0") if p]
+
+
 def take(root: Path) -> dict[str, str]:
     result: dict[str, str] = {}
+    listed = git_files(root)
+    if listed is not None:
+        for rel in sorted(set(listed)):
+            if rel.split("/", 1)[0] in SKIP:
+                continue
+            full = root / rel
+            if full.is_symlink() or not full.is_file():
+                continue
+            result[rel] = hashlib.sha256(full.read_bytes()).hexdigest()
+        return result
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP)
         for name in sorted(filenames):
@@ -68,7 +97,7 @@ def main(argv: list[str]) -> int:
             print(json.dumps(take(root), sort_keys=True))
         else:
             print(json.dumps(scope(args.before, args.after, args.allowed)))
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     return 0

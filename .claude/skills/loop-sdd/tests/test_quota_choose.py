@@ -6,7 +6,7 @@ def reading(five, seven, age=10):
             "resets_at": {"five_hour": 1, "seven_day": 2}}
 
 
-def choose(run, tmp_path, good_config, readings, seat="implementer", override=None, policy="balance", now=1000, seat_overrides=None):
+def choose(run, tmp_path, good_config, readings, seat="implementer", override=None, policy="balance", now=1000, seat_overrides=None, avoid=None):
     good_config["routing"]["policy"] = policy
     cfg = tmp_path / "loop.json"; cfg.write_text(json.dumps(good_config))
     rd = tmp_path / "r.json"; rd.write_text(json.dumps(readings))
@@ -15,6 +15,8 @@ def choose(run, tmp_path, good_config, readings, seat="implementer", override=No
         ov = tmp_path / "ov.json"; ov.write_text(json.dumps(override)); args += ["--override", ov]
     if seat_overrides is not None:
         args += ["--seat-overrides", json.dumps(seat_overrides)]
+    if avoid is not None:
+        args += ["--avoid", avoid]
     r = run(*args)
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
@@ -113,3 +115,32 @@ def test_noop_config_ignores_task_overrides(run, tmp_path, good_config):
     out = choose(run, tmp_path, good_config, {"claude": None, "codex": None},
                  seat_overrides={"implementer": {"backend": "codex", "fallback": "claude"}})
     assert out["backend"] == "noop"
+
+
+def test_avoid_picks_other_side_when_fresh(run, tmp_path, good_config):
+    # codex has the lower seven_day and would win plain balance; avoiding it picks claude
+    out = choose(run, tmp_path, good_config, {"claude": reading(20, 60), "codex": reading(5, 30)}, seat="reviewer", avoid="codex")
+    assert out["backend"] == "claude" and out["blind"] is False
+    assert out["reason"] == "balance: avoid codex (cross-model review)"
+
+
+def test_avoid_falls_back_when_other_side_over(run, tmp_path, good_config):
+    out = choose(run, tmp_path, good_config, {"claude": reading(90, 60), "codex": reading(5, 30)}, seat="reviewer", avoid="codex")
+    assert out["backend"] == "codex" and out["blind"] is False
+    assert "avoid unmet" in out["reason"]
+
+
+def test_avoid_never_blind(run, tmp_path, good_config):
+    out = choose(run, tmp_path, good_config, {"claude": None, "codex": None}, seat="reviewer", avoid="codex")
+    assert out["backend"] is None and out["reason"] == "quota" and out["blind"] is False
+
+
+def test_avoid_ignored_under_fixed(run, tmp_path, good_config):
+    out = choose(run, tmp_path, good_config, {"claude": reading(1, 1), "codex": reading(1, 1)},
+                 seat="reviewer", policy="fixed", avoid="codex")
+    assert out["backend"] == "codex" and "avoid" not in out["reason"]
+
+
+def test_avoid_non_candidate_ignored(run, tmp_path, good_config):
+    out = choose(run, tmp_path, good_config, {"claude": reading(20, 60), "codex": reading(5, 30)}, seat="reviewer", avoid="noop")
+    assert out["backend"] == "codex" and "avoid" not in out["reason"]
