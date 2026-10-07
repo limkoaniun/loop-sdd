@@ -109,6 +109,62 @@ def cmd_read(args) -> int:
     return 0
 
 
+def is_known(reading: dict | None, stale_after: float) -> bool:
+    return (
+        isinstance(reading, dict)
+        and isinstance(reading.get("age_seconds"), (int, float))
+        and reading["age_seconds"] <= stale_after
+        and isinstance(reading.get("seven_day"), (int, float))
+    )
+
+
+def is_over(reading: dict, switch_at: float) -> bool:
+    return any(isinstance(v, (int, float)) and v >= switch_at for v in (reading.get("five_hour"), reading.get("seven_day")))
+
+
+def choose(readings: dict, cfg: dict, seat_name: str, override: dict, now: float, seat_overrides: dict) -> dict:
+    seat = {**cfg["seats"][seat_name], **seat_overrides.get(seat_name, {})}
+    backend, fallback = seat["backend"], seat["fallback"]
+    if backend == "noop":
+        return {"backend": "noop", "reason": "noop seat", "blind": False, "candidates": ["noop"]}
+    routing = cfg["routing"]
+    stale_after, switch_at = routing["stale_after_seconds"], routing["switch_at"]
+    excluded = {b for b, entry in override.items() if isinstance(entry, dict) and entry.get("resets_at", 0) > now}
+    candidates = [b for b in (backend, fallback) if b not in excluded]
+    result = {"blind": False, "candidates": candidates}
+    if routing["policy"] == "balance":
+        fresh = [b for b in candidates if is_known(readings.get(b), stale_after) and not is_over(readings[b], switch_at)]
+        if fresh:
+            pick = min(fresh, key=lambda b: (readings[b]["seven_day"], 0 if b == backend else 1))
+            return {**result, "backend": pick, "reason": f"balance: lower seven_day ({readings[pick]['seven_day']}%)"}
+    if backend in candidates:
+        known = is_known(readings.get(backend), stale_after)
+        if not known:
+            return {**result, "backend": backend, "reason": "fixed: backend, quota unknown", "blind": True}
+        if not is_over(readings[backend], switch_at):
+            return {**result, "backend": backend, "reason": "fixed: backend under switch_at"}
+    if fallback in candidates and is_known(readings.get(fallback), stale_after) and not is_over(readings[fallback], switch_at):
+        return {**result, "backend": fallback, "reason": "fixed: fallback, backend over switch_at or excluded"}
+    return {**result, "backend": None, "reason": "quota"}
+
+
+def cmd_choose(args) -> int:
+    try:
+        readings = json.loads(args.readings.read_text(encoding="utf-8"))
+        cfg = json.loads(args.config.read_text(encoding="utf-8"))
+        override = json.loads(args.override.read_text(encoding="utf-8")) if args.override and args.override.exists() else {}
+        seat_overrides = json.loads(args.seat_overrides) if args.seat_overrides else {}
+    except (OSError, json.JSONDecodeError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    if args.seat not in cfg.get("seats", {}):
+        print(f"error: unknown seat {args.seat}", file=sys.stderr)
+        return 2
+    now = args.now if args.now is not None else time.time()
+    print(json.dumps(choose(readings, cfg, args.seat, override, now, seat_overrides)))
+    return 0
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -116,10 +172,17 @@ def main(argv: list[str]) -> int:
     p.add_argument("--claude-cache", type=Path, default=Path.home() / ".claude" / "usage-cache.json")
     p.add_argument("--codex-sessions", type=Path, default=Path.home() / ".codex" / "sessions")
     p.add_argument("--now", type=float)
+    p = sub.add_parser("choose")
+    p.add_argument("--readings", type=Path, required=True)
+    p.add_argument("--config", type=Path, required=True)
+    p.add_argument("--seat", required=True)
+    p.add_argument("--override", type=Path)
+    p.add_argument("--seat-overrides")
+    p.add_argument("--now", type=float)
     args = parser.parse_args(argv)
     if args.cmd == "read":
         return cmd_read(args)
-    return 2
+    return cmd_choose(args)
 
 
 if __name__ == "__main__":
