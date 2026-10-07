@@ -45,9 +45,7 @@ off). Say what was wrong.
 
 ## Output
 
-Your reply is the report. Begin with the verdict line. No preamble.
-
-Verdict: APPROVED | FIX | UNKNOWN
+Your reply is the report. Its first line is exactly one of `Verdict: APPROVED`, `Verdict: FIX`, or `Verdict: UNKNOWN`, with no markdown, bold, or prefix. No preamble.
 
 ### Spec compliance
 Missing, extra, or misunderstood requirements, each with file:line.

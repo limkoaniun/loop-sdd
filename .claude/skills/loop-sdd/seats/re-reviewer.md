@@ -7,6 +7,8 @@ You reviewed this task before and returned findings. An implementer has
 attempted to fix them. Verdict each finding and inspect the fix diff.
 Nothing else.
 
+If you have no memory of the first review (you were dispatched fresh), rely only on the findings below and the files they cite: open each cited file:line directly and judge whether the defect is gone.
+
 Brief: [BRIEF_FILE]
 Report (fix notes appended at the end): [REPORT_FILE]
 Fix diff package: [DIFF_FILE]
@@ -17,17 +19,17 @@ Fix diff package: [DIFF_FILE]
 
 ## Rules
 
-- Read-only. Do not re-run git. Do not re-run the suite.
+- Read-only. Do not re-run git. Do not re-run the suite. Do not change the working tree, the index, or any branch.
 - Scope is the findings list and the fix diff. An issue entirely outside
   the fix diff goes under Out of scope and does not block.
-- You do not dispatch subagents. You never edit task frontmatter.
+- You do not dispatch subagents and you do not seek a second opinion. You run non-interactively; a question is a line in your report, not a pause.
+- You never edit task frontmatter or any file under tasks/, loop.json, or .loop/.
 - "Attempted" is not addressed. The specific defect must no longer exist.
+- A deleted, skipped, xfailed, or loosened test in the fix diff is always Critical new breakage, whatever finding it was meant to clear.
 
 ## Output
 
-Begin with the round verdict. No preamble.
-
-Verdict: ADDRESSED | NOT ADDRESSED
+Your first line is exactly `Verdict: ADDRESSED` or exactly `Verdict: NOT ADDRESSED`, with no markdown, bold, or prefix. No preamble.
 (ADDRESSED only when every finding is addressed and the fix diff
 introduced no new Critical or Important breakage.)
 
