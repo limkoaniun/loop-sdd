@@ -63,16 +63,17 @@ rewritten).
 
 ## 4. Fresh check
 
-Run the check command from `loop.json` in the workspace, capture exit code,
+Run the check command from `loop.json` in the workspace with a 120-second
+timeout, capture exit code,
 the last 20 lines of output (stdout and stderr together), and the last
 stderr line. `check_ran_marker` is the regex from `loop.json` (default
 `passed|failed|error` when absent). Map:
 - exit 0 → `PASS`;
 - exit in `check_fail_exits` (from `loop.json`, default `[1]`) AND the captured
   tail matches `check_ran_marker` → `FAIL` (the tests ran and some failed);
-- anything else, including a listed exit without a marker match (runner
-  missing, collection error) → `UNKNOWN`, reason "check did not run: <last
-  stderr line>".
+- anything else, including a check that timed out after 120s or crashed, and a
+  listed exit without a marker match (runner missing, collection error) →
+  `UNKNOWN`, reason "check did not run: <last stderr line>".
 
 Append `{"when": "before", "status": ..., "tail": ...}` to `checks`.
 
