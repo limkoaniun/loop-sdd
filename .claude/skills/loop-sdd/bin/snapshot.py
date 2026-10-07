@@ -20,10 +20,6 @@ def take(root: Path) -> dict[str, str]:
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP)
         for name in sorted(filenames):
-            # Skip snapshot files at root level: single letter .json or before/after .json
-            if dirpath == str(root) and name.endswith(".json"):
-                if len(name) == 6 or name in ("before.json", "after.json"):
-                    continue
             full = Path(dirpath) / name
             if full.is_symlink():
                 continue
