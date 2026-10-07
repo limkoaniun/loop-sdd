@@ -4,10 +4,9 @@ A Claude Code skill that runs a bounded, interval-triggered development loop
 where every job can be done by either a Claude subagent or an OpenAI Codex
 thread, and the choice follows how much of each plan you have left.
 
-> Status: designed, not yet built. The design is in
-> [`docs/superpowers/specs/2026-10-08-loop-sdd-design.md`](docs/superpowers/specs/2026-10-08-loop-sdd-design.md).
-> This README describes how the skill will behave once implemented and will
-> be updated as the implementation lands.
+> Status: built; helper tests pass; the end-to-end dry run against a Claude Code session has not been performed yet.
+> Live runs against the Claude and Codex plans are the next step. Design: [`docs/superpowers/specs/2026-10-08-loop-sdd-design.md`](docs/superpowers/specs/2026-10-08-loop-sdd-design.md).
+> Plan: [`docs/superpowers/plans/2026-10-08-loop-sdd.md`](docs/superpowers/plans/2026-10-08-loop-sdd.md).
 
 ## The idea in one paragraph
 
@@ -113,6 +112,16 @@ Inside Claude Code:
 /loop-sdd status        # inbox, task table, last run
 /loop 2m /loop-sdd tick # start the loop
 ```
+
+To exercise the control flow without spending either plan, set every seat
+in `loop.json` to `{"backend": "noop", "fallback": "noop", ...}` and run
+`/loop-sdd tick` once. The tick goes through lock, pick, check, snapshot,
+canned implementer, scope, check, canned reviewer, and record, and the
+ledger line it prints should read like
+`<tick> task 001 attempt 1 implementer=noop reviewer=noop check=PASS -> PASS: ...`.
+Activate the virtualenv first (`python3 -m venv .venv && .venv/bin/pip install pytest && source .venv/bin/activate`) so `python3 -m pytest` resolves.
+
+Helper tests: `python3 -m pytest .claude/skills/loop-sdd/tests -q`.
 
 Stop the loop by stopping `/loop`. Nothing is installed in cron.
 

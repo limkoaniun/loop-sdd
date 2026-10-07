@@ -1,0 +1,14 @@
+{
+  "check_command": ["python3", "-m", "pytest", "-q"],
+  "allowed_paths": ["src/", "tests/"],
+  "max_attempts_per_task": 3,
+  "max_elapsed_seconds_per_tick": 600,
+  "no_progress_limit": 2,
+  "fix_rounds_max": 3,
+  "routing": {"policy": "balance", "switch_at": 85, "stale_after_seconds": 3600},
+  "seats": {
+    "implementer": {"backend": "claude", "fallback": "codex", "model": "sonnet", "codex_model": "gpt-5.4"},
+    "reviewer":    {"backend": "codex",  "fallback": "claude", "model": "opus",   "codex_model": "gpt-5.4"},
+    "re_reviewer": {"backend": "codex",  "fallback": "claude", "model": "sonnet", "codex_model": "gpt-5.4"}
+  }
+}
