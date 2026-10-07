@@ -380,3 +380,32 @@ where they differ.
 - **Helper names.** Helpers are `bin/<name>.py`; `review-package` is
   `review_package.py`. Added: `loopcfg.py`, `task.py`, `record.py`,
   `noop.py`, `statusline_patch.py`.
+
+## Amendments from the portable build (2026-10-08, second branch)
+
+- **Starter config.** `loopcfg.py init [DIR]` writes `loop.json` for the
+  detected stack (Python, Rust, Node, Go; precedence in that order) and
+  never overwrites. An unknown stack writes a `REPLACE_ME` placeholder
+  that validation refuses. `init` calls it first.
+- **Runner exit codes.** `check_fail_exits` (default `[1]`) lists the exit
+  codes that mean "tests ran and failed"; cargo uses 101. FAIL still
+  requires a `check_ran_marker` match. `check_timeout_seconds` (default
+  120; 600 in the Rust starter) bounds the check in both tick and init.
+- **Scope detection.** Inside a git work tree the snapshot lists files via
+  `git ls-files --cached --others --exclude-standard`, so ignored build
+  output (`target/`, `node_modules/`) is never a scope change. Outside git
+  it walks the tree as before.
+- **Cross-model review under balance.** The reviewer and re-reviewer seats
+  are routed with `--avoid <implementer backend>` read from the implementer
+  handle file; under `balance` the other side is chosen when known and
+  under `switch_at`, otherwise normal rules apply and never a blind pick.
+  Under `fixed` the pin is respected. The fix loop routes seat
+  `re_reviewer`.
+- **Scope unblock.** The inbox entry carries the attempt's BASE sha and
+  tells the human how to revert a committed, added, or untracked change.
+- **Location independence.** The action files and seat adapters refer to
+  `$SKILL`, the directory containing SKILL.md. `install.sh --user`
+  symlinks the skill into `~/.claude/skills`; `install.sh <project>` copies
+  it, refusing to delete the source or a home skills directory.
+- **Docs.** `docs/TUTORIAL.md` is the newcomer walkthrough; the README is
+  the reference.
