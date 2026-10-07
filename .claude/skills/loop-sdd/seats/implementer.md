@@ -65,4 +65,4 @@ If BLOCKED or NEEDS_CONTEXT, put the specifics in the reply itself.
 | Resume for a fix round | SendMessage to the agent id stored in the handle file, findings verbatim | `mcp__codex__codex-reply` with the stored `threadId`, findings verbatim |
 | Handle file | `.loop/sdd/<task-id>/seat-implementer.json` holding `{"backend": "claude", "agent_id": ...}` | same file holding `{"backend": "codex", "threadId": ...}` |
 | Rate-limit error | the Agent tool returns a failure whose text mentions rate or usage limit | result has `isError: true` and Codex's own text mentions rate limit or usage |
-| noop | run `python3 .claude/skills/loop-sdd/bin/noop.py implementer --report [REPORT_FILE]` | same |
+| noop | run `python3 $SKILL/bin/noop.py implementer --report [REPORT_FILE]` | same |

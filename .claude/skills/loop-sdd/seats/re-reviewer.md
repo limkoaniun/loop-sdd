@@ -49,4 +49,4 @@ Non-blocking observations, or "None".
 |---|---|---|
 | Dispatch | SendMessage to the reviewer's agent id from `.loop/sdd/<task-id>/seat-reviewer.json`; if the agent is gone, dispatch fresh with `model` from the re_reviewer seat config | `mcp__codex__codex-reply` with the reviewer's `threadId`; if the reply fails because the thread is gone, dispatch fresh via `mcp__codex__codex` with `sandbox: read-only` |
 | Rate-limit error | the Agent tool returns a failure whose text mentions rate or usage limit | result has `isError: true` and Codex's own text mentions rate limit or usage |
-| noop | run `python3 .claude/skills/loop-sdd/bin/noop.py re-reviewer` | same |
+| noop | run `python3 $SKILL/bin/noop.py re-reviewer` | same |

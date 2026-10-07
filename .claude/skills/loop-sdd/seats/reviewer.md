@@ -67,4 +67,4 @@ One or two specific lines.
 | Dispatch | Agent tool, `subagent_type: general-purpose`, `model` from the seat config | `mcp__codex__codex` with `prompt`, `model` = seat `codex_model`, `cwd` = workspace, `sandbox: read-only` |
 | Handle file | `.loop/sdd/<task-id>/seat-reviewer.json` holding `{"backend": "claude", "agent_id": ...}` | same file holding `{"backend": "codex", "threadId": ...}` |
 | Rate-limit error | the Agent tool returns a failure whose text mentions rate or usage limit | result has `isError: true` and Codex's own text mentions rate limit or usage |
-| noop | run `python3 .claude/skills/loop-sdd/bin/noop.py reviewer` | same |
+| noop | run `python3 $SKILL/bin/noop.py reviewer` | same |

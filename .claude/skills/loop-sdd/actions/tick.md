@@ -3,8 +3,8 @@
 One bounded run. One attempt per tick. Set these mentally and use them in
 every command below:
 
-- `H=python3 .claude/skills/loop-sdd/bin` (helper directory)
-- `SKILL=.claude/skills/loop-sdd` (seat templates live at `$SKILL/seats/`)
+- `H=python3 $SKILL/bin` (helper directory)
+- `$SKILL` is the skill directory from SKILL.md; seat templates live at `$SKILL/seats/`
 - `WS=$(pwd)`; every other path is relative to the workspace.
 
 **Inbox entry** means exactly:

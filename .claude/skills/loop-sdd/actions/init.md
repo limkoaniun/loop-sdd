@@ -2,12 +2,12 @@
 
 Run once per project. Safe to re-run.
 
-1. `python3 .claude/skills/loop-sdd/bin/loopcfg.py init .` — writes a starter `loop.json` for the
+1. `python3 $SKILL/bin/loopcfg.py init .` — writes a starter `loop.json` for the
    detected stack if none exists (never overwrites). If it wrote one, print the
    `_detected` note and tell the user to review `check_command`,
    `allowed_paths`, and the seats before continuing; an unknown stack leaves a
    `REPLACE_ME` placeholder that validation refuses.
-2. `python3 .claude/skills/loop-sdd/bin/loopcfg.py validate loop.json`.
+2. `python3 $SKILL/bin/loopcfg.py validate loop.json`.
    On exit 2, print the errors and stop. Nothing else runs.
 3. Run the `check_command` from `loop.json` once in the workspace. Capture
    the exit code and the last 20 lines of output. `check_ran_marker` is the
@@ -22,11 +22,11 @@ Run once per project. Safe to re-run.
    one-line heading (`# ledger`, `# inbox`).
 6. Find the statusline script: read `statusLine.command` from
    `~/.claude/settings.json`. If it is `sh <path>` or `bash <path>` or a bare
-   path, run `python3 .claude/skills/loop-sdd/bin/statusline_patch.py <path>`.
+   path, run `python3 $SKILL/bin/statusline_patch.py <path>`.
    If there is no statusLine configured, run
-   `python3 .claude/skills/loop-sdd/bin/record.py inbox --loop-dir .loop --task - --tick init --reason init --detail "no statusline script; Claude quota will read as unknown" --unblock "configure a statusline command, then re-run init"`
+   `python3 $SKILL/bin/record.py inbox --loop-dir .loop --task - --tick init --reason init --detail "no statusline script; Claude quota will read as unknown" --unblock "configure a statusline command, then re-run init"`
    and continue.
-7. `python3 .claude/skills/loop-sdd/bin/quota.py read` and print the result,
+7. `python3 $SKILL/bin/quota.py read` and print the result,
    so the user sees which sides are readable right now.
 8. Report: config valid, directories present, statusline patched or not,
    quota readings, and the start command `/loop 2m /loop-sdd tick`.

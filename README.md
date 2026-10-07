@@ -8,6 +8,20 @@ thread, and the choice follows how much of each plan you have left.
 > Live runs against the Claude and Codex plans are the next step. Design: [`docs/superpowers/specs/2026-10-08-loop-sdd-design.md`](docs/superpowers/specs/2026-10-08-loop-sdd-design.md).
 > Plan: [`docs/superpowers/plans/2026-10-08-loop-sdd.md`](docs/superpowers/plans/2026-10-08-loop-sdd.md).
 
+## Install
+
+From a clone of this repo:
+
+```bash
+./install.sh --user            # one symlink; /loop-sdd works in every project
+./install.sh ~/code/myproject  # or copy into one project
+```
+
+Then in that project: `claude`, `/loop-sdd init`. Init writes a starter
+`loop.json` for the stack it detects (Python, Rust, Node, Go) and refuses to
+continue until the file validates. Review `check_command`, `allowed_paths`,
+and the seats before the first tick.
+
 ## The idea in one paragraph
 
 You add a task file. Every two minutes a tick fires. The tick takes a lock,
@@ -99,11 +113,7 @@ Prerequisites: Claude Code 2.1.80 or later, the Codex CLI logged in, and the
 `codex` MCP server registered (this project uses the
 [ARIS codex-exec bridge](https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep)).
 
-```bash
-git clone https://github.com/limkoaniun/loop-sdd-lab
-cd loop-sdd-lab
-claude
-```
+Install the skill as described in [Install](#install), then start `claude` in your project.
 
 Inside Claude Code:
 
@@ -166,6 +176,7 @@ differ; anything else makes `task.py` refuse the file.
 ```json
 {
   "check_command": ["python3", "-m", "pytest", "-q"],
+  "check_fail_exits": [1],
   "allowed_paths": ["src/", "tests/"],
   "max_attempts_per_task": 3,
   "max_elapsed_seconds_per_tick": 600,
@@ -182,6 +193,8 @@ differ; anything else makes `task.py` refuse the file.
 
 | Key | What it bounds |
 |---|---|
+| `check_fail_exits` | exit codes that mean "tests ran and failed" (cargo uses 101) |
+| `check_ran_marker` | text the check output must contain to prove the tests actually ran |
 | `max_attempts_per_task` | how many ticks may try one task |
 | `max_elapsed_seconds_per_tick` | wall time before a tick refuses to start another seat |
 | `no_progress_limit` | consecutive attempts with an empty diff and a failing check |
@@ -190,6 +203,14 @@ differ; anything else makes `task.py` refuse the file.
 | `routing.policy` | `balance` picks the fresh side with lower weekly usage and stops with `quota` when neither side has a fresh reading under `switch_at` (it never dispatches blind); `fixed` prefers `backend` |
 
 Zero, negative, or missing limits are refused. Nothing runs.
+
+A Rust project's generated file differs only in the check:
+
+```json
+"check_command": ["cargo", "test"],
+"check_ran_marker": "test result:",
+"check_fail_exits": [101],
+```
 
 ## The three seats
 
