@@ -42,7 +42,11 @@ def allowed(path: str, entries: list[str]) -> bool:
 
 def scope(before_file: Path, after_file: Path, entries: list[str]) -> dict:
     before = json.loads(before_file.read_text(encoding="utf-8"))
+    if not isinstance(before, dict):
+        raise ValueError(f"snapshot file must be a JSON object: {before_file}")
     after = json.loads(after_file.read_text(encoding="utf-8"))
+    if not isinstance(after, dict):
+        raise ValueError(f"snapshot file must be a JSON object: {after_file}")
     changed = changed_paths(before, after)
     return {"changed": changed, "violations": [p for p in changed if not allowed(p, entries)]}
 
@@ -57,10 +61,14 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     try:
         if args.cmd == "take":
-            print(json.dumps(take(args.root.resolve()), sort_keys=True))
+            root = args.root.resolve()
+            if not root.is_dir():
+                print(f"error: not a directory: {root}", file=sys.stderr)
+                return 2
+            print(json.dumps(take(root), sort_keys=True))
         else:
             print(json.dumps(scope(args.before, args.after, args.allowed)))
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     return 0

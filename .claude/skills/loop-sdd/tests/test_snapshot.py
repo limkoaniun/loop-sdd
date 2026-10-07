@@ -58,3 +58,15 @@ def test_exact_file_entry_allowed(run, tmp_path):
     after = tmp_path / "a.json"; after.write_text(json.dumps({"NOTES.md": "h", "NOTES.md.bak": "h"}))
     out = json.loads(run("snapshot", "scope", before, after, "--allowed", "NOTES.md").stdout)
     assert out["violations"] == ["NOTES.md.bak"]
+
+
+def test_take_missing_root_exits_2(run, tmp_path):
+    r = run("snapshot", "take", tmp_path / "nope")
+    assert r.returncode == 2 and "error:" in r.stderr
+
+
+def test_scope_non_object_json_exits_2(run, tmp_path):
+    before = tmp_path / "b.json"; before.write_text("[]")
+    after = tmp_path / "a.json"; after.write_text("{}")
+    r = run("snapshot", "scope", before, after, "--allowed", "src/")
+    assert r.returncode == 2 and "error:" in r.stderr
