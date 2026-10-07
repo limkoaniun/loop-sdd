@@ -72,3 +72,37 @@ def test_noop_seat(run, tmp_path, good_config):
     good_config["seats"]["implementer"] = {"backend": "noop", "fallback": "noop", "model": "x", "codex_model": "x"}
     out = choose(run, tmp_path, good_config, {"claude": None, "codex": None})
     assert out["backend"] == "noop"
+
+
+def test_malformed_override_entry_excludes_backend(run, tmp_path, good_config):
+    ov = {"claude": 5000}
+    out = choose(run, tmp_path, good_config, {"claude": None, "codex": reading(5, 30)}, override=ov, policy="fixed")
+    assert out["backend"] == "codex" and out["blind"] is False
+
+
+def test_string_resets_at_excludes_backend(run, tmp_path, good_config):
+    ov = {"claude": {"resets_at": "5000"}, "codex": {"resets_at": None}}
+    out = choose(run, tmp_path, good_config, {"claude": None, "codex": None}, override=ov, policy="fixed")
+    assert out["backend"] is None and out["reason"] == "quota"
+
+
+def test_wrong_shape_inputs_exit_2(run, tmp_path, good_config):
+    cfg = tmp_path / "loop.json"; cfg.write_text(json.dumps(good_config))
+    rd = tmp_path / "r.json"; rd.write_text("[]")
+    r = run("quota", "choose", "--readings", rd, "--config", cfg, "--seat", "implementer")
+    assert r.returncode == 2 and "error:" in r.stderr
+    rd.write_text(json.dumps({"claude": None, "codex": None}))
+    r = run("quota", "choose", "--readings", rd, "--config", cfg, "--seat", "implementer", "--seat-overrides", "[1]")
+    assert r.returncode == 2 and "error:" in r.stderr
+    r = run("quota", "choose", "--readings", rd, "--config", cfg, "--seat", "nobody")
+    assert r.returncode == 2 and "error:" in r.stderr
+
+
+def test_balance_tie_goes_to_backend(run, tmp_path, good_config):
+    out = choose(run, tmp_path, good_config, {"claude": reading(1, 30), "codex": reading(1, 30)})
+    assert out["backend"] == "claude"
+
+
+def test_balance_falls_through_to_blind_fixed(run, tmp_path, good_config):
+    out = choose(run, tmp_path, good_config, {"claude": None, "codex": None})
+    assert out["backend"] == "claude" and out["blind"] is True

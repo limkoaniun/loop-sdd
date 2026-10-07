@@ -129,7 +129,11 @@ def choose(readings: dict, cfg: dict, seat_name: str, override: dict, now: float
         return {"backend": "noop", "reason": "noop seat", "blind": False, "candidates": ["noop"]}
     routing = cfg["routing"]
     stale_after, switch_at = routing["stale_after_seconds"], routing["switch_at"]
-    excluded = {b for b, entry in override.items() if isinstance(entry, dict) and entry.get("resets_at", 0) > now}
+    excluded = set()
+    for b, entry in override.items():
+        resets_at = as_int(entry.get("resets_at")) if isinstance(entry, dict) else None
+        if resets_at is None or resets_at > now:
+            excluded.add(b)
     candidates = [b for b in (backend, fallback) if b not in excluded]
     result = {"blind": False, "candidates": candidates}
     if routing["policy"] == "balance":
@@ -157,7 +161,19 @@ def cmd_choose(args) -> int:
     except (OSError, json.JSONDecodeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
-    if args.seat not in cfg.get("seats", {}):
+    shape_ok = (
+        isinstance(readings, dict)
+        and isinstance(cfg, dict)
+        and isinstance(cfg.get("seats"), dict)
+        and isinstance(cfg.get("routing"), dict)
+        and isinstance(override, dict)
+        and isinstance(seat_overrides, dict)
+        and isinstance(seat_overrides.get(args.seat, {}), dict)
+    )
+    if not shape_ok:
+        print("error: readings, config seats/routing, override and seat-overrides must be JSON objects", file=sys.stderr)
+        return 2
+    if args.seat not in cfg["seats"]:
         print(f"error: unknown seat {args.seat}", file=sys.stderr)
         return 2
     now = args.now if args.now is not None else time.time()
