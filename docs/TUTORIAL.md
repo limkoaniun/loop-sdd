@@ -204,8 +204,12 @@ section 3).
 and a `codex_model`. `backend` and `fallback` must differ, except that
 `noop` is valid only when both are `noop`. If a model name is one your plan
 cannot use, the seat fails at dispatch time and the task is blocked with
-reason `seat`. The defaults put the implementer on Claude and both reviewers
-on Codex, so the maker and the checker are different models.
+reason `seat`. The defaults name Claude as the implementer's `backend` and
+Codex as the reviewers' `backend`. Under the default `balance` policy both
+seats usually land on the same side, because each is routed to whichever
+plan has more weekly quota left. If you want the reviewer on a different
+model from the implementer, set `routing.policy` to `fixed`; then `backend`
+is used unless it is over `switch_at`.
 
 **Limits.** `max_attempts_per_task`, `max_elapsed_seconds_per_tick`,
 `no_progress_limit` and `fix_rounds_max` must be positive finite numbers.
@@ -330,8 +334,10 @@ other than `pending`.
 
 ## 4. Dry run
 
-A dry run walks the whole tick without dispatching Claude or Codex, so it
-spends nothing from either plan.
+A dry run walks the whole tick with canned seats. No implementer or
+reviewer is dispatched. The quota check still runs first, so the tick may
+send one tiny Codex probe if its reading is stale, and may add a `quota`
+entry to the inbox if the Claude cache is stale.
 
 ### What you type
 
@@ -360,7 +366,9 @@ One ledger line, printed and appended to `.loop/ledger.md`:
 20261008T101500Z-a1b2 task 001 attempt 1 implementer=noop reviewer=noop check=PASS -> PASS: fresh check passed and reviewer approved
 ```
 
-The tick id and the four hex characters will differ.
+The tick id and the four hex characters will differ. This line is derived
+from the tick procedure in `actions/tick.md`; it has not yet been observed
+in a real run (the README notes the end-to-end dry run is still pending).
 
 ### What it means
 
@@ -598,7 +606,11 @@ Read the inbox entry first. Then:
   gets). If it left uncommitted changes, commit or discard them. Then set
   `status: pending`.
 - **`quota`.** The task is not blocked. Wait for a reset and the next tick
-  re-checks, or lower `switch_at` if you want to spend closer to the limit.
+  re-checks, or raise `switch_at` if you want to spend closer to the limit.
+  If `/loop-sdd status` shows a side as unknown or stale rather than over
+  the limit, waiting will not help: fix the statusline script or re-run
+  `/loop-sdd init`, run one Codex command so a session log exists, or
+  switch `routing.policy` to `fixed`.
   If `.loop/quota-override.json` marks a backend exhausted and you know it
   has reset, delete that entry (section 8).
 - **check (`UNKNOWN` with reason `check`).** Run `check_command` by hand,
@@ -698,8 +710,11 @@ The loop exists only there. Nothing is installed in cron or anywhere else.
 ### What is left behind
 
 If you stop between ticks, nothing is half-done. If you stop in the middle
-of a tick, the task may be left `in_progress` with a `review.json` marker.
-That is fine: the next tick resumes the review or starts a new attempt.
+of a tick, the task may be left `in_progress` with a `review.json` marker,
+and `.loop/lock` stays held, because the lock is released only at the end of
+a tick. Every later tick is `REFUSED` until you delete the lock by hand (see
+"The lock file" below). After that, the next tick resumes the review or
+starts a new attempt.
 
 ### What is safe to delete
 
