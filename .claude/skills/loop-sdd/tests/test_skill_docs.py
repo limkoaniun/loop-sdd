@@ -18,6 +18,7 @@ def test_tick_references_every_helper_and_template():
                    "review_package.py", "task.py pick", "task.py set", "quota.py read", "quota.py choose",
                    "record.py tick", "record.py inbox", "record.py ruling", "noop.py"):
         assert helper in text, helper
+    assert "check_fail_exits" in text
     for seat in ("seats/implementer.md", "seats/reviewer.md", "seats/re-reviewer.md"):
         assert seat in text
     for outcome in ("PASS", "RETRY", "IDLE", "STOPPED", "UNKNOWN", "REFUSED"):
@@ -29,6 +30,7 @@ def test_tick_references_every_helper_and_template():
 
 def test_init_patches_statusline_and_status_reads_inbox():
     assert "statusline_patch.py" in (SKILL / "actions" / "init.md").read_text()
+    assert "loopcfg.py init" in (SKILL / "actions" / "init.md").read_text()
     status = (SKILL / "actions" / "status.md").read_text()
     assert "inbox.md" in status and "task.py" in status
 

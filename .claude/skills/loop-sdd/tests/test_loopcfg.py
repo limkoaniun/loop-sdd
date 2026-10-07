@@ -74,3 +74,72 @@ def test_bad_check_ran_marker_refused(run, tmp_path, good_config):
     assert r.returncode == 2 and "check_ran_marker" in r.stderr
     good_config["check_ran_marker"] = "passed|failed|error"
     assert run("loopcfg", "validate", write(tmp_path, good_config)).returncode == 0
+
+
+def test_init_python_stack(run, tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
+    r = run("loopcfg", "init", tmp_path)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["written"] is True and out["stack"] == "python"
+    cfg = json.loads((tmp_path / "loop.json").read_text())
+    assert cfg["check_command"] == ["python3", "-m", "pytest", "-q"]
+    assert cfg["check_fail_exits"] == [1] and cfg["check_ran_marker"] == "passed|failed|error"
+    assert cfg["allowed_paths"] == ["src/", "tests/"]
+    assert run("loopcfg", "validate", tmp_path / "loop.json").returncode == 0
+
+
+def test_init_rust_stack(run, tmp_path):
+    (tmp_path / "Cargo.toml").write_text("[package]\nname='x'\n")
+    out = json.loads(run("loopcfg", "init", tmp_path).stdout)
+    cfg = json.loads((tmp_path / "loop.json").read_text())
+    assert out["stack"] == "rust" and cfg["check_command"] == ["cargo", "test"]
+    assert cfg["check_fail_exits"] == [101] and cfg["check_ran_marker"] == "test result:"
+    assert run("loopcfg", "validate", tmp_path / "loop.json").returncode == 0
+
+
+def test_init_node_and_go(run, tmp_path):
+    node = tmp_path / "n"; node.mkdir(); (node / "package.json").write_text("{}")
+    assert json.loads(run("loopcfg", "init", node).stdout)["stack"] == "node"
+    assert json.loads((node / "loop.json").read_text())["allowed_paths"] == ["src/", "test/"]
+    go = tmp_path / "g"; go.mkdir(); (go / "go.mod").write_text("module x\n")
+    assert json.loads(run("loopcfg", "init", go).stdout)["stack"] == "go"
+    assert json.loads((go / "loop.json").read_text())["check_command"] == ["go", "test", "./..."]
+    for d in (node, go):
+        assert run("loopcfg", "validate", d / "loop.json").returncode == 0
+
+
+def test_init_precedence_python_over_node(run, tmp_path):
+    (tmp_path / "pyproject.toml").write_text("")
+    (tmp_path / "package.json").write_text("{}")
+    out = json.loads(run("loopcfg", "init", tmp_path).stdout)
+    assert out["stack"] == "python"
+    assert "python" in json.loads((tmp_path / "loop.json").read_text())["_detected"]
+
+
+def test_init_unknown_stack_fails_validation(run, tmp_path):
+    out = json.loads(run("loopcfg", "init", tmp_path).stdout)
+    assert out["stack"] == "unknown"
+    r = run("loopcfg", "validate", tmp_path / "loop.json")
+    assert r.returncode == 2 and "REPLACE_ME" in r.stderr
+
+
+def test_init_never_overwrites(run, tmp_path):
+    (tmp_path / "loop.json").write_text("{\"keep\": true}")
+    out = json.loads(run("loopcfg", "init", tmp_path).stdout)
+    assert out == {"written": False, "reason": "exists", "path": str(tmp_path / "loop.json")}
+    assert (tmp_path / "loop.json").read_text() == "{\"keep\": true}"
+
+
+def test_init_missing_dir_exits_2(run, tmp_path):
+    r = run("loopcfg", "init", tmp_path / "nope")
+    assert r.returncode == 2 and "error:" in r.stderr
+
+
+def test_check_fail_exits_validated(run, tmp_path, good_config):
+    for bad in ([], [0], [1, 1], ["1"], [256], 1):
+        good_config["check_fail_exits"] = bad
+        r = run("loopcfg", "validate", write(tmp_path, good_config))
+        assert r.returncode == 2 and "check_fail_exits" in r.stderr, bad
+    good_config["check_fail_exits"] = [1, 101]
+    assert run("loopcfg", "validate", write(tmp_path, good_config)).returncode == 0

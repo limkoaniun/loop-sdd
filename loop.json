@@ -1,6 +1,7 @@
 {
   "check_command": ["python3", "-m", "pytest", "-q"],
   "check_ran_marker": "passed|failed|error",
+  "check_fail_exits": [1],
   "allowed_paths": ["src/", "tests/"],
   "max_attempts_per_task": 3,
   "max_elapsed_seconds_per_tick": 600,
