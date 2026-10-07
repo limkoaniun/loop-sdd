@@ -69,7 +69,9 @@ else (could not run, timed out after 120s, crashed) → `UNKNOWN`. Append
 `{"when": "before", "status": ..., "tail": ...}` to `checks`.
 
 `review.json` always has the shape
-`{"verdict": "PENDING"|"FIX"|"APPROVED", "base": <task base>, "head": <HEAD at write>, "attempt": <n>, "fix_round": <int>}`.
+`{"verdict": "PENDING"|"FIX"|"APPROVED", "base": <task base>, "head": <HEAD at write>, "attempt": <n>, "fix_round": <int>}`,
+plus, only while a fix round awaits its re-review, `"fix_base": <sha>` and
+`"pending_rereview": true`.
 
 - `UNKNOWN` → `$H/task.py set <path> status=blocked`, inbox reason `check`
   (detail: the tail; unblock "run the check command by hand, fix the
@@ -77,16 +79,22 @@ else (could not run, timed out after 120s, crashed) → `UNKNOWN`. Append
 - `PASS`, the task is `in_progress`, and `review.json` exists:
   - `head` differs from `git rev-parse HEAD` → the tree moved under the
     loop: delete `review.json`, inbox reason `review` (detail "review marker
-    stale"; unblock "read the reviewer's words in the report folder, set
-    status: pending"), and continue as a fresh attempt.
+    stale"; unblock "read .loop/sdd/<task_id>/review-<attempt>-reply.md and any -fix<round>-reply.md, set status: pending"), and continue as a fresh attempt.
   - `"verdict": "APPROVED"` → `$H/task.py set <path> status=done`, outcome
     `PASS`, reason "fresh check passed; approved review on record", stop.
+  - For both PENDING and FIX below, first restore from `review.json`:
+    `attempt` (into the record too), `fix_round`, `fix_base` and
+    `pending_rereview`, so report and package paths match the interrupted
+    run.
   - `"verdict": "PENDING"` → the attempt already happened; only the review is
-    owed. Set `BASE` from `base.txt`, skip steps 5 to 9, go to step 10's
-    review dispatch.
-  - `"verdict": "FIX"` → go to the **Fix loop** and continue from round
-    `fix_round + 1`, so `fix_rounds_max` binds across ticks. Skip steps 5 to
-    10.
+    owed. Skip steps 5 to 9, go to step 10's review dispatch (the package
+    uses `base.txt`).
+  - `"verdict": "FIX"` → go to the **Fix loop**, reading the open findings
+    for `[FINDINGS]` from `.loop/sdd/<task_id>/findings.md`. If
+    `pending_rereview` is true, resume at fix-loop step 7 (re-review the
+    stored `fix_base`..HEAD package) without dispatching the implementer.
+    Otherwise continue from round `fix_round + 1`, so `fix_rounds_max`
+    binds across ticks. Skip steps 5 to 10.
 - Otherwise continue. (A `PASS` on a `pending` task just means the task adds
   new behavior; the attempt still runs.)
 
@@ -200,22 +208,25 @@ Route seat `reviewer`. Dispatch `$SKILL/seats/reviewer.md` with `[BRIEF_FILE]`,
 acceptance criteria plus any implementer concerns, verbatim). Store the
 handle in `seat-reviewer.json`.
 
-Rewrite `review.json` with the verdict (same shape, same `fix_round: 0`) and
-put the verdict in the record's `review`.
+Persist the reviewer's reply verbatim to
+`.loop/sdd/<task_id>/review-<attempt>-reply.md` (reviewer seats cannot write
+under `.loop/`), and write the open Critical and Important findings to
+`.loop/sdd/<task_id>/findings.md` (empty when none). Rewrite `review.json`
+with the verdict (same shape, same `fix_round: 0`) and put the verdict in
+the record's `review`.
 
 - `APPROVED` → `$H/task.py set <path> status=done`, outcome `PASS`, reason
   "fresh check passed and reviewer approved", stop.
 - `UNKNOWN` → blocked, inbox reason `review` (detail: the reviewer's words;
-  unblock "read the reviewer's words in the report folder, set status:
-  pending"), outcome `UNKNOWN`, stop.
+  unblock "read .loop/sdd/<task_id>/review-<attempt>-reply.md and any -fix<round>-reply.md, set status: pending"), outcome `UNKNOWN`, stop.
 - `FIX` → fix loop, starting at round 1 with the reviewer's findings.
 
 ## Fix loop
 
 The controller keeps the open-findings list itself (Critical and Important,
-verbatim). Round counter starts at `fix_round + 1` (1 on first entry; when
-resumed from step 4 with no findings in hand, re-read them from the latest
-reviewer words in the report folder). For each round up to `fix_rounds_max`:
+verbatim) in `.loop/sdd/<task_id>/findings.md`, the only copy that survives
+a tick. Round counter starts at `fix_round + 1` (1 on first entry). For each
+round up to `fix_rounds_max`:
 
 1. If elapsed ≥ limit → `STOPPED` reason `elapsed`, task stays `in_progress`,
    `review.json` verdict `FIX`, stop.
@@ -223,8 +234,12 @@ reviewer words in the report folder). For each round up to `fix_rounds_max`:
    from the list.
 3. `FIX_BASE=$(git rev-parse HEAD)`. Take the before snapshot:
    `$H/snapshot.py take . > .loop/sdd/<task_id>/before-fix<round>.json`.
-   Route seat `implementer`, then resume the implementer handle with the
-   open findings verbatim and "append a fix report to [REPORT_FILE]".
+   Route seat `implementer`. If the routed backend matches the stored
+   handle's backend, resume that handle; if it differs, dispatch fresh on the
+   routed backend using the template's fresh-dispatch path (`[BRIEF_FILE]`,
+   `[REPORT_FILE]`, the open findings) and overwrite the handle file. Either
+   way the instruction is the open findings verbatim and "append a fix report
+   to [REPORT_FILE]".
    Handle the reply exactly as **Reading an implementer reply** in step 7
    (exact `Status:` token; `BLOCKED`, `NEEDS_CONTEXT` or unparseable →
    blocked + inbox reason `seat`; `Commits: none (sandbox)` → commit on its
@@ -237,14 +252,22 @@ reviewer words in the report folder). For each round up to `fix_rounds_max`:
    If `empty` is true, the fix committed nothing: apply the empty-package
    rule of step 10 (delete `review.json`, bump `no_progress`, `RETRY` or
    `STOPPED` reason `no_progress`).
-   Otherwise rewrite `review.json` with verdict `FIX`, the current HEAD and
-   `fix_round: <round>`.
-7. Route seat `reviewer`, then resume the reviewer handle using
-   `$SKILL/seats/re-reviewer.md` with `[BRIEF_FILE]`, `[REPORT_FILE]`,
-   `[DIFF_FILE]` (the fix package path) and `[FINDINGS]` (the open list).
-8. Update the open list: remove findings the reply marks `ADDRESSED` under
+   Otherwise rewrite `review.json` with verdict `FIX`, the current HEAD,
+   `fix_base: $FIX_BASE`, `pending_rereview: true`, and `fix_round` left at
+   its PREVIOUS value (it advances only in step 8, after the re-review is
+   read).
+7. Route seat `reviewer`. If the routed backend matches the stored reviewer
+   handle's backend, resume it using `$SKILL/seats/re-reviewer.md`; if it
+   differs, dispatch fresh on the routed backend using the template's
+   fresh-dispatch path and overwrite the handle file. Either way fill
+   `[BRIEF_FILE]`, `[REPORT_FILE]`, `[DIFF_FILE]` (the fix package path) and
+   `[FINDINGS]` (the open list, from `findings.md`).
+8. Persist the reply verbatim to
+   `.loop/sdd/<task_id>/review-<attempt>-fix<round>-reply.md`. Update the
+   open list: remove findings the reply marks `ADDRESSED` under
    "### Per finding", add any Critical or Important under "### New
-   breakage". Rewrite `review.json` with the current HEAD and `fix_round`.
+   breakage", and rewrite `findings.md`. Rewrite `review.json` with the
+   current HEAD, `fix_round: <round>`, and `pending_rereview` cleared.
    Empty list (verdict `ADDRESSED`) → `review.json` verdict `APPROVED`,
    `$H/task.py set <path> status=done`, outcome `PASS`, stop.
    Verdict `NOT ADDRESSED` → next round with the open list.
@@ -304,7 +327,8 @@ limit:
    path. If it yields `null` → `STOPPED` reason `quota`.
 3. If the failing dispatch was a resumed handle (fix loop), the other backend
    has no handle: dispatch FRESH there using the matching template's
-   fresh-dispatch path with `[BRIEF_FILE]`, `[REPORT_FILE]` and the open
-   findings. If routing yields `null` → `STOPPED` reason `quota`, task stays
+   fresh-dispatch path with `[BRIEF_FILE]`, `[REPORT_FILE]`, the open
+   findings, and for a re-reviewer also `[DIFF_FILE]` (the current fix
+   package path). If routing yields `null` → `STOPPED` reason `quota`, task stays
    `in_progress`, `review.json` keeps verdict `FIX`.
 4. Never retry the same backend inside the tick.
