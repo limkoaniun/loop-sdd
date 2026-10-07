@@ -8,6 +8,8 @@ thread, and the choice follows how much of each plan you have left.
 > Live runs against the Claude and Codex plans are the next step. Design: [`docs/superpowers/specs/2026-10-08-loop-sdd-design.md`](docs/superpowers/specs/2026-10-08-loop-sdd-design.md).
 > Plan: [`docs/superpowers/plans/2026-10-08-loop-sdd.md`](docs/superpowers/plans/2026-10-08-loop-sdd.md).
 
+New here? Read [docs/TUTORIAL.md](docs/TUTORIAL.md) for a step-by-step walkthrough.
+
 ## Install
 
 From a clone of this repo:
@@ -20,7 +22,7 @@ From a clone of this repo:
 Then in that project: `claude`, `/loop-sdd init`. Init writes a starter
 `loop.json` for the stack it detects (Python, Rust, Node, Go) and refuses to
 continue until the file validates. Review `check_command`, `allowed_paths`,
-and the seats before the first tick.
+and the seats before the first tick. The [tutorial](docs/TUTORIAL.md) walks through the first tick.
 
 ## The idea in one paragraph
 
