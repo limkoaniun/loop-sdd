@@ -101,7 +101,11 @@ def main(argv: list[str]) -> int:
     for name in ("--task", "--finding", "--why", "--cost"):
         p.add_argument(name, required=True)
     args = parser.parse_args(argv)
-    return {"tick": cmd_tick, "inbox": cmd_inbox, "ruling": cmd_ruling}[args.cmd](args)
+    try:
+        return {"tick": cmd_tick, "inbox": cmd_inbox, "ruling": cmd_ruling}[args.cmd](args)
+    except OSError as error:
+        print(f"error: cannot write under {args.loop_dir}: {error}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """Remaining-quota readings for Claude and Codex, and seat routing. Usage:
   quota.py read [--claude-cache PATH] [--codex-sessions DIR] [--now EPOCH]
-  quota.py choose --readings FILE --config loop.json --seat NAME [--override FILE] [--now EPOCH]
+  quota.py choose --readings FILE --config loop.json --seat NAME [--override FILE] [--seat-overrides JSON] [--now EPOCH]
+
+choose: a noop config seat always returns noop (task seat_overrides are ignored).
+Under policy balance, the fresh candidate under switch_at with the lower seven_day
+wins; when no candidate is fresh and under switch_at the answer is backend null,
+reason quota (balance never picks blind). Under policy fixed, the backend is used
+(blind when its quota is unknown) unless it is over switch_at or excluded, then
+the fallback if known and under switch_at, else null.
 """
 from __future__ import annotations
 
@@ -123,10 +130,10 @@ def is_over(reading: dict, switch_at: float) -> bool:
 
 
 def choose(readings: dict, cfg: dict, seat_name: str, override: dict, now: float, seat_overrides: dict) -> dict:
+    if cfg["seats"][seat_name].get("backend") == "noop":
+        return {"backend": "noop", "reason": "noop seat", "blind": False, "candidates": ["noop"]}
     seat = {**cfg["seats"][seat_name], **seat_overrides.get(seat_name, {})}
     backend, fallback = seat["backend"], seat["fallback"]
-    if backend == "noop":
-        return {"backend": "noop", "reason": "noop seat", "blind": False, "candidates": ["noop"]}
     routing = cfg["routing"]
     stale_after, switch_at = routing["stale_after_seconds"], routing["switch_at"]
     excluded = set()
@@ -141,6 +148,7 @@ def choose(readings: dict, cfg: dict, seat_name: str, override: dict, now: float
         if fresh:
             pick = min(fresh, key=lambda b: (readings[b]["seven_day"], 0 if b == backend else 1))
             return {**result, "backend": pick, "reason": f"balance: lower seven_day ({readings[pick]['seven_day']}%)"}
+        return {**result, "backend": None, "reason": "quota"}
     if backend in candidates:
         known = is_known(readings.get(backend), stale_after)
         if not known:

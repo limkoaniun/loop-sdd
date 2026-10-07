@@ -63,3 +63,14 @@ def test_malformed_json(run, tmp_path):
     p.write_text("{")
     r = run("loopcfg", "validate", p)
     assert r.returncode == 2
+
+
+def test_bad_check_ran_marker_refused(run, tmp_path, good_config):
+    good_config["check_ran_marker"] = "("
+    r = run("loopcfg", "validate", write(tmp_path, good_config))
+    assert r.returncode == 2 and "check_ran_marker" in r.stderr
+    good_config["check_ran_marker"] = ""
+    r = run("loopcfg", "validate", write(tmp_path, good_config))
+    assert r.returncode == 2 and "check_ran_marker" in r.stderr
+    good_config["check_ran_marker"] = "passed|failed|error"
+    assert run("loopcfg", "validate", write(tmp_path, good_config)).returncode == 0

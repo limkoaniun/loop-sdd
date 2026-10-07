@@ -103,6 +103,13 @@ def test_balance_tie_goes_to_backend(run, tmp_path, good_config):
     assert out["backend"] == "claude"
 
 
-def test_balance_falls_through_to_blind_fixed(run, tmp_path, good_config):
+def test_balance_with_nothing_fresh_is_quota(run, tmp_path, good_config):
     out = choose(run, tmp_path, good_config, {"claude": None, "codex": None})
-    assert out["backend"] == "claude" and out["blind"] is True
+    assert out["backend"] is None and out["reason"] == "quota" and out["blind"] is False
+
+
+def test_noop_config_ignores_task_overrides(run, tmp_path, good_config):
+    good_config["seats"]["implementer"] = {"backend": "noop", "fallback": "noop", "model": "x", "codex_model": "x"}
+    out = choose(run, tmp_path, good_config, {"claude": None, "codex": None},
+                 seat_overrides={"implementer": {"backend": "codex", "fallback": "claude"}})
+    assert out["backend"] == "noop"

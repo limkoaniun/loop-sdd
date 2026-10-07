@@ -67,3 +67,31 @@ def test_pick_validates_every_file(run, tmp_path):
     (tmp_path / "002-b.md").write_text(TASK.replace('"001"', '"002"').replace("status: pending", "status: maybe"))
     r = run("task", "pick", tmp_path)
     assert r.returncode == 2 and "002-b.md" in r.stderr and "status" in r.stderr
+
+
+def test_pick_unicode_digit_attempts_exits_2(run, tmp_path):
+    (tmp_path / "001-a.md").write_text(TASK.replace("attempts: 0", "attempts: \u0663"), encoding="utf-8")
+    r = run("task", "pick", tmp_path)
+    assert r.returncode == 2 and "attempts" in r.stderr and "Traceback" not in r.stderr
+
+
+def test_pick_non_utf8_exits_2(run, tmp_path):
+    (tmp_path / "001-a.md").write_bytes(TASK.encode() + b"\xff\xfe")
+    r = run("task", "pick", tmp_path)
+    assert r.returncode == 2 and "not UTF-8" in r.stderr and "Traceback" not in r.stderr
+
+
+def test_seat_overrides_validated(run, tmp_path):
+    bad = [
+        '{"planner": {"backend": "codex"}}',
+        '{"implementer": {"backend": "gpt"}}',
+        '{"implementer": {"backend": "codex", "fallback": "codex"}}',
+        '{"implementer": {"backend": "noop"}}',
+    ]
+    for value in bad:
+        (tmp_path / "001-a.md").write_text(TASK.replace("seat_overrides: {}", f"seat_overrides: {value}"))
+        r = run("task", "pick", tmp_path)
+        assert r.returncode == 2 and "seat_overrides" in r.stderr and "Traceback" not in r.stderr, value
+    good = '{"implementer": {"backend": "codex", "fallback": "claude", "model": "opus"}}'
+    (tmp_path / "001-a.md").write_text(TASK.replace("seat_overrides: {}", f"seat_overrides: {good}"))
+    assert run("task", "pick", tmp_path).returncode == 0

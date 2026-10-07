@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Validate loop.json. Usage: loopcfg.py validate PATH"""
+"""Validate loop.json. Usage: loopcfg.py validate PATH
+
+Optional key check_ran_marker: a non-empty regex matched against the check
+output tail to tell a test failure (exit 1 + match) from a check that did not
+run. Default when absent: passed|failed|error.
+"""
 from __future__ import annotations
 
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -42,6 +48,15 @@ def validate(cfg) -> list[str]:
             errors.append(f"{key} must be a non-empty string list")
         elif key == "allowed_paths" and not all(inside_workspace(e) for e in cfg[key]):
             errors.append("allowed_paths entries must be relative and must not contain ..")
+    if "check_ran_marker" in cfg:
+        marker = cfg["check_ran_marker"]
+        if not isinstance(marker, str) or not marker:
+            errors.append("check_ran_marker must be a non-empty string (default passed|failed|error)")
+        else:
+            try:
+                re.compile(marker)
+            except re.error as error:
+                errors.append(f"check_ran_marker is not a valid regex: {error}")
     routing = cfg.get("routing")
     if not isinstance(routing, dict):
         errors.append("routing must be an object")

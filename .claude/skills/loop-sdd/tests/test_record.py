@@ -66,3 +66,15 @@ def test_tick_without_reason_has_no_suffix(run, tmp_path):
     f = tmp_path / "rec.json"; f.write_text(json.dumps(rec))
     run("record", "tick", "--loop-dir", tmp_path / ".loop", "--json", f)
     assert (tmp_path / ".loop" / "ledger.md").read_text().strip() == "T9 task 001 attempt 1 check=FAIL -> RETRY"
+
+
+def test_tick_unwritable_loop_dir_exits_2(run, tmp_path):
+    rec = {"tick_id": "T9", "task_id": None, "outcome": "IDLE", "reason": "x", "attempt": 0, "seats": [], "checks": []}
+    f = tmp_path / "rec.json"; f.write_text(json.dumps(rec))
+    blocker = tmp_path / "not-a-dir"; blocker.write_text("file")
+    r = run("record", "tick", "--loop-dir", blocker, "--json", f)
+    assert r.returncode == 2 and "error:" in r.stderr and "Traceback" not in r.stderr
+    r = run("record", "inbox", "--loop-dir", blocker, "--task", "-", "--tick", "T9", "--reason", "x", "--detail", "d", "--unblock", "u")
+    assert r.returncode == 2 and "error:" in r.stderr and "Traceback" not in r.stderr
+    r = run("record", "ruling", "--loop-dir", blocker, "--task", "-", "--finding", "f", "--why", "w", "--cost", "c")
+    assert r.returncode == 2 and "error:" in r.stderr and "Traceback" not in r.stderr

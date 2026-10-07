@@ -26,7 +26,7 @@ def parse_value(key: str, raw: str):
         except json.JSONDecodeError as error:
             raise TaskError(f"{key} must be inline JSON: {error}") from error
     if key in ("attempts", "no_progress"):
-        if not raw.isdigit():
+        if not (raw.isascii() and raw.isdigit()):
             raise TaskError(f"{key} must be a non-negative integer, got {raw}")
         return int(raw)
     if key == "status":
@@ -38,16 +38,43 @@ def parse_value(key: str, raw: str):
     raise TaskError(f"unknown key {key}")
 
 
-def validate(fm: dict) -> None:
-    if not isinstance(fm.get("seat_overrides"), dict):
+OVERRIDE_SEATS = ("implementer", "reviewer", "re_reviewer")
+OVERRIDE_BACKENDS = ("claude", "codex")
+
+
+def validate_overrides(overrides) -> None:
+    if not isinstance(overrides, dict):
         raise TaskError("seat_overrides must be a JSON object")
+    for seat, value in overrides.items():
+        if seat not in OVERRIDE_SEATS:
+            raise TaskError(f"seat_overrides: unknown seat {seat!r}; expected one of {OVERRIDE_SEATS}")
+        if not isinstance(value, dict):
+            raise TaskError(f"seat_overrides.{seat} must be a JSON object")
+        for key, item in value.items():
+            if key in ("backend", "fallback"):
+                if item not in OVERRIDE_BACKENDS:
+                    raise TaskError(f"seat_overrides.{seat}.{key} must be one of {OVERRIDE_BACKENDS}, got {item!r}")
+            elif key in ("model", "codex_model"):
+                if not isinstance(item, str) or not item:
+                    raise TaskError(f"seat_overrides.{seat}.{key} must be a non-empty string")
+            else:
+                raise TaskError(f"seat_overrides.{seat}: unknown key {key!r}")
+        if "backend" in value and "fallback" in value and value["backend"] == value["fallback"]:
+            raise TaskError(f"seat_overrides.{seat}: backend and fallback must differ")
+
+
+def validate(fm: dict) -> None:
+    validate_overrides(fm.get("seat_overrides"))
     v = fm.get("verify")
     if v is not None and not (isinstance(v, list) and all(isinstance(s, str) for s in v)):
         raise TaskError("verify must be null or a JSON string list")
 
 
 def load(path: Path) -> tuple[dict, str, str]:
-    text = path.read_text(encoding="utf-8")
+    try:
+        text = path.read_text(encoding="utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        raise TaskError("not UTF-8") from error
     if not text.startswith("---\n"):
         raise TaskError("missing frontmatter")
     end = text.find("\n---\n", 4)

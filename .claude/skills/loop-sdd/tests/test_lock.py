@@ -42,3 +42,11 @@ def test_status(run, tmp_path):
 def test_release_missing_lock(run, tmp_path):
     r = run("lock", "release", tmp_path / "lock", "--token", "x")
     assert r.returncode == 3
+
+
+def test_status_with_malformed_created_at(run, tmp_path):
+    lock = tmp_path / "lock"
+    lock.write_text(json.dumps({"owner": "t", "token": "x", "created_at": "yesterday"}))
+    r = run("lock", "status", lock)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == {"held": True, "owner": "t", "age_seconds": 0}

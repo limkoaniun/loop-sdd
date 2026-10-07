@@ -26,11 +26,11 @@ def read(path: Path) -> dict | None:
 
 
 def public(data: dict) -> dict:
-    return {
-        "held": True,
-        "owner": data.get("owner"),
-        "age_seconds": max(0, int(time.time() - float(data.get("created_at", time.time())))),
-    }
+    try:
+        age = max(0, int(time.time() - float(data.get("created_at", time.time()))))
+    except (TypeError, ValueError, OverflowError):
+        age = 0
+    return {"held": True, "owner": data.get("owner"), "age_seconds": age}
 
 
 def take(path: Path, owner: str) -> int:
