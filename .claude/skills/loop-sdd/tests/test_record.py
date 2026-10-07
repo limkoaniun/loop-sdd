@@ -41,3 +41,28 @@ def test_inbox_entry(run, tmp_path):
 def test_ruling_line(run, tmp_path):
     run("record", "ruling", "--loop-dir", tmp_path / ".loop", "--task", "001", "--finding", "long function", "--why", "readable", "--cost", "none")
     assert (tmp_path / ".loop" / "ledger.md").read_text().strip() == "task 001 Ruling: long function — readable — none"
+
+
+def test_tick_rejects_tick_id_with_separator(run, tmp_path):
+    rec = {"tick_id": "../evil", "task_id": None, "outcome": "IDLE", "reason": "", "attempt": 0, "seats": [], "checks": []}
+    f = tmp_path / "rec.json"; f.write_text(json.dumps(rec))
+    r = run("record", "tick", "--loop-dir", tmp_path / ".loop", "--json", f)
+    assert r.returncode == 2 and "error:" in r.stderr
+    assert not (tmp_path / "evil.json").exists() and not (tmp_path / ".loop" / "ledger.md").exists()
+
+
+def test_tick_rejects_non_list_seats_and_non_object_root(run, tmp_path):
+    f = tmp_path / "rec.json"
+    f.write_text(json.dumps({"tick_id": "T", "task_id": None, "outcome": "IDLE", "reason": "", "attempt": 0, "seats": None, "checks": []}))
+    r = run("record", "tick", "--loop-dir", tmp_path / ".loop", "--json", f)
+    assert r.returncode == 2 and "seats" in r.stderr
+    f.write_text("null")
+    r = run("record", "tick", "--loop-dir", tmp_path / ".loop", "--json", f)
+    assert r.returncode == 2 and "error:" in r.stderr
+
+
+def test_tick_without_reason_has_no_suffix(run, tmp_path):
+    rec = {"tick_id": "T9", "task_id": "001", "outcome": "RETRY", "reason": "", "attempt": 1, "seats": [], "checks": [{"when": "after", "status": "FAIL"}]}
+    f = tmp_path / "rec.json"; f.write_text(json.dumps(rec))
+    run("record", "tick", "--loop-dir", tmp_path / ".loop", "--json", f)
+    assert (tmp_path / ".loop" / "ledger.md").read_text().strip() == "T9 task 001 attempt 1 check=FAIL -> RETRY"

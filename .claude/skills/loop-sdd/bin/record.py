@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -39,14 +40,32 @@ def cmd_tick(args) -> int:
     except (OSError, json.JSONDecodeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
-    missing = [k for k in REQUIRED if k not in rec]
-    if not isinstance(rec, dict) or missing:
-        print(f"error: run record missing {', '.join(missing) or 'object'}", file=sys.stderr)
+    if not isinstance(rec, dict):
+        print("error: run record must be an object", file=sys.stderr)
         return 2
+    missing = [k for k in REQUIRED if k not in rec]
+    if missing:
+        print(f"error: run record missing {', '.join(missing)}", file=sys.stderr)
+        return 2
+    if not isinstance(rec.get("tick_id"), str):
+        print("error: tick_id must be a string", file=sys.stderr)
+        return 2
+    if not re.match(r"^[A-Za-z0-9._-]+$", rec["tick_id"]):
+        print("error: tick_id must be a plain filename token", file=sys.stderr)
+        return 2
+    if not isinstance(rec.get("outcome"), str):
+        print("error: outcome must be a string", file=sys.stderr)
+        return 2
+    if not isinstance(rec.get("seats"), list):
+        print("error: seats must be a list", file=sys.stderr)
+        return 2
+    if not isinstance(rec.get("checks"), list):
+        print("error: checks must be a list", file=sys.stderr)
+        return 2
+    line = ledger_line(rec)
     run_path = args.loop_dir / "runs" / f"{rec['tick_id']}.json"
     run_path.parent.mkdir(parents=True, exist_ok=True)
     run_path.write_text(json.dumps(rec, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    line = ledger_line(rec)
     append(args.loop_dir / "ledger.md", line)
     print(json.dumps({"run": str(run_path), "ledger_line": line}))
     return 0
