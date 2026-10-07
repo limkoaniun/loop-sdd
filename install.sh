@@ -59,6 +59,21 @@ dest="$proj/.claude/skills/loop-sdd"
 if [ -e "$dest" ] && [ "$force" -ne 1 ]; then
   echo "refused: $dest exists; pass --force to replace it" >&2; exit 1
 fi
+src_real="$(cd "$src" && pwd -P)"
+dest_parent="$proj/.claude/skills"
+if [ -e "$dest" ]; then
+  dest_real="$(cd "$dest" 2>/dev/null && pwd -P || true)"
+  case "$dest_real" in
+    "$src_real"|"$src_real"/*) echo "refused: $dest is the skill source itself" >&2; exit 1 ;;
+  esac
+fi
+if [ -d "$dest_parent" ]; then
+  parent_real="$(cd "$dest_parent" && pwd -P)"
+  home_real="$(cd "$HOME/.claude" 2>/dev/null && pwd -P || echo "$HOME/.claude")"
+  case "$parent_real" in
+    "$HOME/.claude"/*|"$home_real"/*) echo "refused: $dest_parent resolves inside \$HOME/.claude; use --user instead" >&2; exit 1 ;;
+  esac
+fi
 rm -rf "$dest"
 mkdir -p "$dest"
 cp -R "$src/SKILL.md" "$src/actions" "$src/seats" "$src/bin" "$dest/"

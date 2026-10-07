@@ -55,3 +55,16 @@ def test_no_hardcoded_skill_path_in_actions_or_seats():
     for p in list((SKILL / "actions").glob("*.md")) + list((SKILL / "seats").glob("*.md")):
         assert ".claude/skills/loop-sdd" not in p.read_text(), p.name
     assert "$SKILL" in (SKILL / "SKILL.md").read_text()
+
+
+def test_force_refuses_to_delete_source(tmp_path):
+    r = sh(ROOT, "--force")
+    assert r.returncode == 1 and (SKILL / "SKILL.md").exists() and "refused" in (r.stdout + r.stderr)
+
+
+def test_force_refuses_symlinked_home_skills(tmp_path):
+    home = tmp_path / "home"; (home / ".claude" / "skills").mkdir(parents=True)
+    proj = tmp_path / "proj"; (proj / ".claude").mkdir(parents=True)
+    (proj / ".claude" / "skills").symlink_to(home / ".claude" / "skills")
+    r = sh(proj, "--force", env={"HOME": str(home)})
+    assert r.returncode == 1 and "refused" in (r.stdout + r.stderr)
