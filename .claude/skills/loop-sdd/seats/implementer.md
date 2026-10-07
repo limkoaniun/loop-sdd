@@ -39,6 +39,8 @@ Report BLOCKED when the brief needs a decision with more than one valid
 answer, when the change would have to touch a path outside the allowed
 list, or when you cannot make the check pass without weakening a test.
 
+When you report BLOCKED or NEEDS_CONTEXT, commit nothing and leave the tree as it is; the controller handles it.
+
 ## Report
 
 Write the full report to [REPORT_FILE]: what you implemented, the test you

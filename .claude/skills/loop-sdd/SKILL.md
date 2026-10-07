@@ -40,4 +40,5 @@ If no action was given, list these and stop.
 - Never dispatch two seats at once.
 - Never tell a reviewer what not to flag.
 - A finding is never dropped without a `record.py ruling` line.
-- Stop and report rather than guess when a helper exits 2 or 3.
+- Stop and report rather than guess on any non-zero helper exit that a step
+  does not map explicitly.

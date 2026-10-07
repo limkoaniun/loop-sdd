@@ -31,3 +31,9 @@ def test_init_patches_statusline_and_status_reads_inbox():
     assert "statusline_patch.py" in (SKILL / "actions" / "init.md").read_text()
     status = (SKILL / "actions" / "status.md").read_text()
     assert "inbox.md" in status and "task.py" in status
+
+
+def test_tick_snapshots_after_marking_in_progress():
+    text = (SKILL / "actions" / "tick.md").read_text()
+    assert "task.py set <path> status=in_progress" in text and "before.json" in text
+    assert text.index("task.py set <path> status=in_progress") < text.index("before.json")
