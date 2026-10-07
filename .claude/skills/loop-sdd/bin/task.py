@@ -89,15 +89,25 @@ def summary(path: Path, fm: dict, title: str) -> dict:
 
 
 def pick(directory: Path) -> int:
+    if not directory.is_dir():
+        raise TaskError(f"not a directory: {directory}")
+
+    # Load and validate every file first
+    files: list[tuple[Path, dict, str]] = []
     for path in sorted(directory.glob("*.md")):
         try:
             fm, _, title = load(path)
+            files.append((path, fm, title))
         except TaskError as error:
             print(f"error: {path.name}: {error}", file=sys.stderr)
             return 2
+
+    # Pick the first pending or in_progress
+    for path, fm, title in files:
         if fm["status"] in ("pending", "in_progress"):
             print(json.dumps(summary(path, fm, title)))
             return 0
+
     print("null")
     return 0
 

@@ -55,3 +55,15 @@ def test_set_rejects_bad_value(run, tmp_path):
     r = run("task", "set", p, "status=finished")
     assert r.returncode == 2
     assert "status: pending" in p.read_text()
+
+
+def test_pick_missing_dir_exits_2(run, tmp_path):
+    r = run("task", "pick", tmp_path / "nope")
+    assert r.returncode == 2 and "error:" in r.stderr
+
+
+def test_pick_validates_every_file(run, tmp_path):
+    (tmp_path / "001-a.md").write_text(TASK)
+    (tmp_path / "002-b.md").write_text(TASK.replace('"001"', '"002"').replace("status: pending", "status: maybe"))
+    r = run("task", "pick", tmp_path)
+    assert r.returncode == 2 and "002-b.md" in r.stderr and "status" in r.stderr
