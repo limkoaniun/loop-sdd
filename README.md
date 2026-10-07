@@ -45,7 +45,9 @@ Addy Osmani's rule: the maker and the verifier should be separate agents so
 the model is never grading its own homework. Using a different model family
 for the reviewer goes one step further, because Claude and GPT have
 different blind spots. And if you pay for both plans, routing by remaining
-quota means neither sits idle while the other runs out.
+quota means neither sits idle while the other runs out. Under `balance` the
+reviewer is routed away from the implementer's backend whenever quota allows;
+under `fixed` it is pinned by its `backend`.
 
 ## How a tick works
 
@@ -197,12 +199,13 @@ differ; anything else makes `task.py` refuse the file.
 |---|---|
 | `check_fail_exits` | exit codes that mean "tests ran and failed" (cargo uses 101) |
 | `check_ran_marker` | text the check output must contain to prove the tests actually ran |
+| `check_timeout_seconds` | optional; seconds the check may run before it counts as not run (default 120; the Rust starter sets 600) |
 | `max_attempts_per_task` | how many ticks may try one task |
 | `max_elapsed_seconds_per_tick` | wall time before a tick refuses to start another seat |
 | `no_progress_limit` | consecutive attempts with an empty diff and a failing check |
 | `fix_rounds_max` | review-fix-re-review rounds per attempt |
 | `routing.switch_at` | used percentage at which a backend is skipped |
-| `routing.policy` | `balance` picks the fresh side with lower weekly usage and stops with `quota` when neither side has a fresh reading under `switch_at` (it never dispatches blind); `fixed` prefers `backend` |
+| `routing.policy` | `balance` picks the fresh side with lower weekly usage and stops with `quota` when neither side has a fresh reading under `switch_at` (it never dispatches blind), and for the reviewer and re-reviewer it first prefers the side the implementer did not use when that side is fresh and under `switch_at`; `fixed` prefers `backend` |
 
 Zero, negative, or missing limits are refused. Nothing runs.
 
@@ -212,6 +215,7 @@ A Rust project's generated file differs only in the check:
 "check_command": ["cargo", "test"],
 "check_ran_marker": "test result:",
 "check_fail_exits": [101],
+"check_timeout_seconds": 600,
 ```
 
 ## The three seats

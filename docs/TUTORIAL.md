@@ -71,8 +71,9 @@ The installer stops with exit 1 and changes nothing when:
 - project mode: the target `.claude/skills/loop-sdd` already exists and you
   did not pass `--force`.
 - project mode with `--force`: the target resolves to the skill source in
-  this clone, or the project's `.claude/skills` resolves inside
-  `~/.claude`. In the second case use `--user` instead.
+  this clone.
+- project mode, with or without `--force`: the project's `.claude/skills`
+  resolves inside `~/.claude`. Use `--user` instead.
 
 A path that is not a directory exits 2. A project without a `.git`
 directory only gets a warning, but the loop needs git when it runs.
@@ -154,13 +155,15 @@ For a project with a `pyproject.toml`, the generated file is:
 }
 ```
 
-For a project with a `Cargo.toml`, only these lines differ:
+For a project with a `Cargo.toml`, only these lines differ (the last one is
+added):
 
 ```json
   "_detected": "detected rust",
   "check_command": ["cargo", "test"],
   "check_ran_marker": "test result:",
   "check_fail_exits": [101],
+  "check_timeout_seconds": 600,
 ```
 
 After writing the file, init validates it, runs the check command once,
@@ -173,12 +176,14 @@ command `/loop 2m /loop-sdd tick`. Do not start the loop yet.
 Open `loop.json` and check these lines before anything else.
 
 **`check_command`.** This is how the loop decides whether the code works. It
-runs before and after every attempt, in the project root, with a 120-second
-timeout. If it points at the wrong interpreter or the wrong test runner,
-every tick reads as `UNKNOWN` and blocks the task. For Python, `python3`
-must be an interpreter that has pytest installed in the shell Claude Code
-runs commands in. If it takes longer than 120 seconds, it counts as a check
-that did not run.
+runs before and after every attempt, in the project root, with a timeout of
+`check_timeout_seconds` (default 120). If it points at the wrong interpreter
+or the wrong test runner, every tick reads as `UNKNOWN` and blocks the
+task. For Python, `python3` must be an interpreter that has pytest installed
+in the shell Claude Code runs commands in. If it takes longer than `check_timeout_seconds`, it counts
+as a check that did not run. The optional key `check_timeout_seconds` must be
+a positive number of seconds; the Rust starter sets 600 because a cold
+`cargo test` compiles first, and the other starters leave it out.
 
 **`check_fail_exits` and `check_ran_marker`.** Together they separate "the
 tests ran and some failed" from "the tests did not run at all". A check
@@ -205,11 +210,11 @@ and a `codex_model`. `backend` and `fallback` must differ, except that
 `noop` is valid only when both are `noop`. If a model name is one your plan
 cannot use, the seat fails at dispatch time and the task is blocked with
 reason `seat`. The defaults name Claude as the implementer's `backend` and
-Codex as the reviewers' `backend`. Under the default `balance` policy both
-seats usually land on the same side, because each is routed to whichever
-plan has more weekly quota left. If you want the reviewer on a different
-model from the implementer, set `routing.policy` to `fixed`; then `backend`
-is used unless it is over `switch_at`.
+Codex as the reviewers' `backend`. Under the default `balance` policy the
+reviewer and re-reviewer are routed away from the implementer's backend
+whenever the other side has a fresh reading under `switch_at`; when it does
+not, they go to whichever side has quota. Under `fixed` each seat is pinned
+to its `backend`, used unless it is over `switch_at`.
 
 **Limits.** `max_attempts_per_task`, `max_elapsed_seconds_per_tick`,
 `no_progress_limit` and `fix_rounds_max` must be positive finite numbers.
@@ -335,9 +340,8 @@ other than `pending`.
 ## 4. Dry run
 
 A dry run walks the whole tick with canned seats. No implementer or
-reviewer is dispatched. The quota check still runs first, so the tick may
-send one tiny Codex probe if its reading is stale, and may add a `quota`
-entry to the inbox if the Claude cache is stale.
+reviewer is dispatched. Because every seat is `noop`, the controller skips
+the quota refresh, so no Codex probe is sent.
 
 ### What you type
 
@@ -396,7 +400,8 @@ The dry run changed real state. Nothing undoes it for you:
 2. Delete `.loop/` (`rm -rf .loop`).
 3. Restore the seats in `loop.json` to their real backends.
 4. Run `/loop-sdd init` again. It recreates `.loop/` with an empty ledger
-   and inbox. A tick run without `.loop/` fails at the lock step.
+   and inbox. A tick run without `.loop/` no longer fails: it creates the
+   directories it needs, but only init writes the ledger and inbox headings.
 
 ## 5. First real tick
 
@@ -592,11 +597,12 @@ Read the inbox entry first. Then:
 - **`no_progress`.** The implementer is not committing anything. Make the
   brief clearer, set `no_progress: 0`, and set `status: pending`. Leaving
   the counter at the limit means one more empty attempt blocks it again.
-- **`scope`.** The inbox lists every path outside `allowed_paths`. Revert
-  them (`git checkout -- <paths>` for working-tree changes; revert the
-  commit if the seat committed them), or widen `allowed_paths` if the
-  change was right. Then set `status: pending`. The loop does not revert for
-  you.
+- **`scope`.** The inbox lists every path outside `allowed_paths` and the
+  attempt's base sha (`base <sha>`). Revert the out-of-scope change: for a
+  committed change `git revert <sha>` or `git checkout <base> -- <path>`
+  then commit, `git rm <path>` for a file the attempt added, `rm <path>` for
+  an untracked file. Or widen `allowed_paths` if the change was right. Then
+  set `status: pending`. The loop does not revert for you.
 - **review (`UNKNOWN` with reason `review`, or `STOPPED` `fix_rounds`).**
   Read `.loop/sdd/<id>/review-<attempt>-reply.md` and any
   `-fix<round>-reply.md`. Fix the listed Critical findings by hand, or
@@ -695,7 +701,10 @@ An override replaces the seat's keys from `loop.json` for that task only.
 It does not bypass routing. Under `balance` the side with lower weekly usage
 still wins, and swapping `backend` and `fallback` only changes who wins a
 tie. To make each task run on the side you named, set `routing.policy` to
-`fixed` for the A/B. Even then, an over-quota `backend` falls back. Check
+`fixed` for the A/B. Even then, an over-quota `backend` falls back. The
+reviewer is now routed away from the implementer's backend when quota
+allows, so an A/B under `balance` is meaningful without switching to
+`fixed`; `fixed` stays the guaranteed way to pin each side. Check
 the ledger line (`implementer=codex`) for each task to confirm which side
 actually ran before you compare results. Overrides are ignored entirely
 when the seat in `loop.json` is `noop`.
