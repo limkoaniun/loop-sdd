@@ -7,12 +7,26 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
 
 WINDOWS = {300: "five_hour", 10080: "seven_day"}
+
+
+def as_int(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return None
+    return int(value)
+
+
+def safely(reader, *args):
+    try:
+        return reader(*args)
+    except Exception:  # a quota source must never take the command down; null is the safe answer
+        return None
 
 
 def empty_reading(source: str, age: int) -> dict:
@@ -32,7 +46,7 @@ def read_claude(path: Path, now: float) -> dict | None:
         window = limits.get(key) or {}
         if isinstance(window.get("used_percentage"), (int, float)):
             reading[key] = float(window["used_percentage"])
-            reading["resets_at"][key] = window.get("resets_at")
+            reading["resets_at"][key] = as_int(window.get("resets_at"))
     return reading
 
 
@@ -48,17 +62,25 @@ def read_codex(sessions: Path, now: float) -> dict | None:
     last: dict | None = None
     stamp: float | None = None
     try:
-        for line in rollout.read_text(encoding="utf-8").splitlines():
+        for line in rollout.read_bytes().decode("utf-8", errors="replace").splitlines():
             if '"rate_limits"' not in line:
                 continue
             try:
                 event = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if not isinstance(event, dict):
+                continue
             payload = event.get("payload", event)
-            limits = payload.get("rate_limits") or (payload.get("info") or {}).get("rate_limits")
+            if not isinstance(payload, dict):
+                continue
+            info = payload.get("info")
+            limits = payload.get("rate_limits")
+            if not isinstance(limits, dict):
+                limits = info.get("rate_limits") if isinstance(info, dict) else None
             if isinstance(limits, dict):
                 last = limits
+                stamp = None
                 ts = event.get("timestamp")
                 if isinstance(ts, str):
                     try:
@@ -77,13 +99,13 @@ def read_codex(sessions: Path, now: float) -> dict | None:
         key = WINDOWS.get(window.get("window_minutes"))
         if key and isinstance(window.get("used_percent"), (int, float)):
             reading[key] = float(window["used_percent"])
-            reading["resets_at"][key] = window.get("resets_at")
+            reading["resets_at"][key] = as_int(window.get("resets_at"))
     return reading
 
 
 def cmd_read(args) -> int:
     now = args.now if args.now is not None else time.time()
-    print(json.dumps({"claude": read_claude(args.claude_cache, now), "codex": read_codex(args.codex_sessions, now)}))
+    print(json.dumps({"claude": safely(read_claude, args.claude_cache, now), "codex": safely(read_codex, args.codex_sessions, now)}))
     return 0
 
 

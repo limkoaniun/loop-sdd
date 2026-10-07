@@ -65,3 +65,40 @@ def test_newest_rollout_wins(run, tmp_path):
     os.utime(f, (now - 9000, now - 9000))
     out = json.loads(run("quota", "read", "--claude-cache", tmp_path / "nope", "--codex-sessions", sessions, "--now", now).stdout)
     assert out["codex"]["five_hour"] == 50.0
+
+
+def rollout(tmp_path, lines, mtime):
+    d = tmp_path / "sessions" / "2026" / "10" / "07"
+    d.mkdir(parents=True, exist_ok=True)
+    f = d / "rollout-2026-10-07T22-53-52-abc.jsonl"
+    f.write_bytes(b"".join(l if isinstance(l, bytes) else (json.dumps(l) + "\n").encode() for l in lines))
+    os.utime(f, (mtime, mtime))
+    return tmp_path / "sessions"
+
+
+def test_codex_age_from_event_timestamp(run, tmp_path):
+    now = 1_800_000_000
+    ev = {"timestamp": "2027-01-15T08:00:00Z", "payload": {"rate_limits": {"primary": {"used_percent": 1.0, "window_minutes": 300, "resets_at": 5}, "secondary": None}}}
+    sessions = rollout(tmp_path, [ev], now - 9999)
+    out = json.loads(run("quota", "read", "--claude-cache", tmp_path / "nope", "--codex-sessions", sessions, "--now", now).stdout)
+    assert out["codex"]["age_seconds"] == 0
+
+
+def test_codex_null_payload_line_is_skipped(run, tmp_path):
+    now = 1_800_000_000
+    good = {"payload": {"info": {"rate_limits": {"primary": {"used_percent": 2.0, "window_minutes": 300, "resets_at": 7}, "secondary": None}}}}
+    bad = {"payload": None, "note": "rate_limits"}
+    sessions = rollout(tmp_path, [good, bad], now - 5)
+    r = run("quota", "read", "--claude-cache", tmp_path / "nope", "--codex-sessions", sessions, "--now", now)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout)["codex"]["five_hour"] == 2.0
+
+
+def test_codex_truncated_utf8_tail_is_tolerated(run, tmp_path):
+    now = 1_800_000_000
+    good = {"payload": {"rate_limits": {"primary": {"used_percent": 3.0, "window_minutes": 300, "resets_at": "soon"}, "secondary": None}}}
+    sessions = rollout(tmp_path, [good, b'{"rate_limits": "\xe2\x82'], now - 5)
+    r = run("quota", "read", "--claude-cache", tmp_path / "nope", "--codex-sessions", sessions, "--now", now)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)["codex"]
+    assert out["five_hour"] == 3.0 and out["resets_at"]["five_hour"] is None
