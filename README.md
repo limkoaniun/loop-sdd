@@ -75,7 +75,7 @@ flowchart LR
     Q[bin/quota] --> CL[Claude<br/>statusline cache<br/>five_hour / seven_day]
     Q --> CX[Codex<br/>session log<br/>primary / secondary]
     CL & CX --> POL{policy}
-    POL -- balance --> B1[pick lower seven_day used]
+    POL -- balance --> B1[pick lower seven_day used<br/>no fresh reading: STOPPED quota]
     POL -- fixed --> B2[backend unless >= switch_at<br/>then fallback]
     B1 & B2 --> DIS[dispatch seat]
     DIS -- rate-limit error --> OV[write quota-override.json<br/>retry once on other side]
@@ -115,9 +115,11 @@ Inside Claude Code:
 
 To exercise the control flow without spending either plan, set every seat
 in `loop.json` to `{"backend": "noop", "fallback": "noop", ...}` and run
-`/loop-sdd tick` once. The tick goes through lock, pick, check, snapshot,
-canned implementer, scope, check, canned reviewer, and record, and the
-ledger line it prints should read like
+`/loop-sdd tick` once. With every seat noop the tick exercises lock, pick,
+check, snapshot, canned implementer, scope, check, canned reviewer, and
+record. No commit is made (the canned implementer changes nothing, and the
+empty diff is not counted as no progress in this mode), and any task
+`seat_overrides` are ignored. The ledger line it prints should read like
 `<tick> task 001 attempt 1 implementer=noop reviewer=noop check=PASS -> PASS: ...`.
 Activate the virtualenv first (`python3 -m venv .venv && .venv/bin/pip install pytest && source .venv/bin/activate`) so `python3 -m pytest` resolves.
 
@@ -150,8 +152,12 @@ Only the controller changes `status`, and only you move a task out of
 `seat_overrides`:
 
 ```yaml
-seat_overrides: {implementer: {backend: codex}}
+seat_overrides: {"implementer": {"backend": "codex", "fallback": "claude"}}
 ```
+
+The value is inline JSON. Seat names are `implementer`, `reviewer`,
+`re_reviewer`; `backend` and `fallback` must be `claude` or `codex` and must
+differ; anything else makes `task.py` refuse the file.
 
 ## Configuring the loop
 
@@ -181,7 +187,7 @@ seat_overrides: {implementer: {backend: codex}}
 | `no_progress_limit` | consecutive attempts with an empty diff and a failing check |
 | `fix_rounds_max` | review-fix-re-review rounds per attempt |
 | `routing.switch_at` | used percentage at which a backend is skipped |
-| `routing.policy` | `balance` spreads load by weekly usage; `fixed` prefers `backend` |
+| `routing.policy` | `balance` picks the fresh side with lower weekly usage and stops with `quota` when neither side has a fresh reading under `switch_at` (it never dispatches blind); `fixed` prefers `backend` |
 
 Zero, negative, or missing limits are refused. Nothing runs.
 
