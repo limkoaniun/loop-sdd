@@ -25,3 +25,19 @@ def test_patch_refuses_without_input_line(run, tmp_path):
     s = tmp_path / "statusline.sh"; s.write_text('echo hi\n')
     r = run("statusline_patch", s)
     assert r.returncode == 2 and s.read_text() == 'echo hi\n'
+
+
+def test_patch_preserves_crlf(run, tmp_path):
+    s = tmp_path / "statusline.sh"
+    s.write_bytes(b'#!/bin/sh\r\ninput=$(cat)\r\necho hi\r\n')
+    r = run("statusline_patch", s)
+    assert json.loads(r.stdout) == {"patched": True}
+    data = s.read_bytes()
+    assert data == b'#!/bin/sh\r\ninput=$(cat)\r\n' + CACHE_LINE.encode() + b'\r\necho hi\r\n'
+
+
+def test_patch_preserves_missing_trailing_newline_and_formfeed(run, tmp_path):
+    s = tmp_path / "statusline.sh"
+    s.write_bytes(b'input=$(cat)\necho "a\x0cb"')
+    run("statusline_patch", s)
+    assert s.read_bytes() == b'input=$(cat)\n' + CACHE_LINE.encode() + b'\necho "a\x0cb"'

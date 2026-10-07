@@ -17,20 +17,33 @@ def main(argv: list[str]) -> int:
         return 2
     path = Path(argv[0])
     try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as error:
+        text = path.read_text(encoding="utf-8", newline="")
+    except (OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     if "usage-cache.json" in text:
         print(json.dumps({"patched": False, "reason": "already patched"}))
         return 0
-    lines = text.splitlines()
-    index = next((i for i, line in enumerate(lines) if line.strip() == ANCHOR), None)
+    lines = text.split("\n")
+    # Detect EOL type from anchor line
+    eol = "\n"
+    index = None
+    for i, line in enumerate(lines):
+        if line.rstrip("\r").strip() == ANCHOR:
+            index = i
+            if line.endswith("\r"):
+                eol = "\r\n"
+            break
     if index is None:
         print(f"error: no '{ANCHOR}' line in {path}", file=sys.stderr)
         return 2
-    lines.insert(index + 1, CACHE_LINE)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Insert CACHE_LINE with appropriate line ending
+    cache_line_with_eol = CACHE_LINE
+    if eol == "\r\n":
+        cache_line_with_eol = CACHE_LINE + "\r"
+    lines.insert(index + 1, cache_line_with_eol)
+    new_text = "\n".join(lines)
+    path.write_text(new_text, encoding="utf-8", newline="")
     print(json.dumps({"patched": True}))
     return 0
 
