@@ -12,7 +12,9 @@ replies, and keep the records. You never write or fix code in this session.
 
 `$SKILL` is the directory that contains this SKILL.md. You know it because
 you just read the file; it may be `.claude/skills/loop-sdd` in the project or
-`~/.claude/skills/loop-sdd` for a user-level install. Everything that must be
+`~/.claude/skills/loop-sdd` for a user-level install. `$SKILL` is a path you
+substitute into each command before running it, not a shell variable; quote
+it if it contains spaces. Everything that must be
 deterministic is a helper under `$SKILL/bin/`. Run them with
 `python3 $SKILL/bin/<name>.py`. Every helper prints JSON on success and
 exits 2 on bad input or 3 when it refuses. Trust their output over your own

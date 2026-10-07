@@ -39,3 +39,11 @@ def test_tick_snapshots_after_marking_in_progress():
     text = (SKILL / "actions" / "tick.md").read_text()
     assert "task.py set <path> status=in_progress" in text and "before.json" in text
     assert text.index("task.py set <path> status=in_progress") < text.index("before.json")
+
+
+def test_tick_routes_re_reviewer_away_from_implementer_and_reads_timeout():
+    text = (SKILL / "actions" / "tick.md").read_text()
+    assert "Route seat `re_reviewer`" in text
+    assert "--avoid" in text
+    assert "check_timeout_seconds" in text
+    assert "check_timeout_seconds" in (SKILL / "actions" / "init.md").read_text()

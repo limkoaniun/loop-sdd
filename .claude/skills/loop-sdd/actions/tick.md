@@ -34,7 +34,9 @@ Note the start time. "Elapsed" below means seconds since it.
 
 ## 1. Lock
 
-`$H/lock.py take .loop/lock --owner <tick_id>`.
+`mkdir -p .loop/runs .loop/sdd` first, so a tick survives a missing `.loop/`
+(init still owns creating the ledger and inbox; `record.py` creates its files
+as needed). Then `$H/lock.py take .loop/lock --owner <tick_id>`.
 Exit 3 → outcome `REFUSED`, reason "lock held by <owner> for <age>s",
 record, print, stop. No token was taken, so there is nothing to release. Do
 not delete the lock. If age is far beyond `max_elapsed_seconds_per_tick`,
@@ -63,22 +65,23 @@ rewritten).
 
 ## 4. Fresh check
 
-Run the check command from `loop.json` in the workspace with a 120-second
-timeout, capture exit code,
+Run the check command from `loop.json` in the workspace with a timeout of
+`check_timeout_seconds` (default 120) from `loop.json`, capture exit code,
 the last 20 lines of output (stdout and stderr together), and the last
 stderr line. `check_ran_marker` is the regex from `loop.json` (default
 `passed|failed|error` when absent). Map:
 - exit 0 → `PASS`;
 - exit in `check_fail_exits` (from `loop.json`, default `[1]`) AND the captured
   tail matches `check_ran_marker` → `FAIL` (the tests ran and some failed);
-- anything else, including a check that timed out after 120s or crashed, and a
+- anything else, including a check that timed out after `check_timeout_seconds`
+  (default 120) or crashed, and a
   listed exit without a marker match (runner missing, collection error) →
   `UNKNOWN`, reason "check did not run: <last stderr line>".
 
 Append `{"when": "before", "status": ..., "tail": ...}` to `checks`.
 
 `review.json` always has the shape
-`{"verdict": "PENDING"|"FIX"|"APPROVED", "base": <task base>, "head": <HEAD at write>, "attempt": <n>, "fix_round": <int>}`,
+`{"verdict": "PENDING"|"FIX"|"APPROVED"|"UNKNOWN", "base": <task base>, "head": <HEAD at write>, "attempt": <n>, "fix_round": <int>}`,
 plus, only while a fix round awaits its re-review, `"fix_base": <sha>` and
 `"pending_rereview": true`.
 
@@ -111,7 +114,8 @@ plus, only while a fix round awaits its re-review, `"fix_base": <sha>` and
 
 If `attempts >= max_attempts_per_task`: `$H/task.py set <path> status=blocked`,
 inbox reason `attempts` (detail "attempts exhausted"; unblock "raise
-max_attempts_per_task or split the task, then set status: pending"), outcome
+max_attempts_per_task or split the task, then set status: pending and set
+attempts: 0"), outcome
 `STOPPED` reason `attempts`, stop. This sits after the resume checks so a
 task with a PENDING or APPROVED marker is finished, not blocked.
 
@@ -149,7 +153,9 @@ Dispatch using
 `$SKILL/seats/implementer.md` with every bracket filled: `[BRIEF_FILE]`,
 `[REPORT_FILE]`, `[ALLOWED_PATHS]` (from loop.json, space-separated),
 `[CHECK_COMMAND]`, `[WORKDIR]` (absolute workspace path). Store the handle
-in `.loop/sdd/<task_id>/seat-implementer.json`.
+in `.loop/sdd/<task_id>/seat-implementer.json` as
+`{"backend": <routed backend>, "handle": <session or thread id>}`; reviewer
+routing reads its `backend` field.
 
 **Reading an implementer reply** (also used by the fix loop). Its first line
 is `Status: <TOKEN>`; match the whole token
@@ -186,12 +192,16 @@ first line is not one of the allowed tokens is a seat failure.
 Put the result in `scope`.
 
 - `violations` non-empty → `$H/task.py set <path> status=blocked`, inbox
-  reason `scope` (detail: every path; unblock "git checkout -- <paths>, set
-  status: pending"), outcome `STOPPED` reason `scope`, stop. Do not revert.
+  reason `scope` (detail: every violating path and the attempt's BASE sha as
+  `base <sha>`; unblock "revert the out-of-scope change: for a committed
+  change `git revert <sha>` or `git checkout <base> -- <path>` then commit,
+  `git rm <path>` for a file the attempt added, `rm <path>` for an untracked
+  file; then set status: pending"), outcome `STOPPED` reason `scope`, stop.
+  Do not revert.
 - `changed` empty → `$H/task.py set <path> no_progress=<no_progress+1>`. If
   that is now ≥ `no_progress_limit` → `status=blocked`, inbox reason
-  `no_progress` (unblock "clarify the brief, set status: pending"), `STOPPED`
-  reason `no_progress`, stop.
+  `no_progress` (unblock "clarify the brief, set status: pending and set
+  no_progress: 0"), `STOPPED` reason `no_progress`, stop.
   A noop implementer seat is exempt: skip the no_progress increment and
   continue; build the package anyway and dispatch the noop reviewer.
 - `changed` non-empty → `$H/task.py set <path> no_progress=0`.
@@ -214,12 +224,16 @@ task set one; any non-zero there counts as `FAIL`.
 The package covers the whole task (base.txt..HEAD), not just this attempt.
 
 If `empty` is true, nothing was committed: delete
-`.loop/sdd/<task_id>/review.json` if present, then
-`$H/task.py set <path> no_progress=<no_progress+1>`. If that reaches
-`no_progress_limit` → `status=blocked`, inbox reason `no_progress` (unblock
-"clarify the brief, set status: pending"), outcome `STOPPED` reason
-`no_progress`, stop. Otherwise outcome `RETRY`, reason "no commits to
-review", stop. Never leave a PENDING marker on an empty package.
+`.loop/sdd/<task_id>/review.json` if present. Use the `no_progress` value
+from the task file as it stands after step 8, so one empty attempt counts
+once. If step 8 already bumped it in this tick (`changed` was empty), do not
+bump again. Otherwise (the implementer changed files but committed nothing,
+or step 8 did not run) `$H/task.py set <path> no_progress=<that value+1>`.
+If the value now reaches `no_progress_limit` → `status=blocked`, inbox
+reason `no_progress` (unblock "clarify the brief, set status: pending and set
+no_progress: 0"), outcome `STOPPED` reason `no_progress`, stop. Otherwise
+outcome `RETRY`, reason "no commits to review", stop. Never leave a PENDING
+marker on an empty package.
 A noop implementer seat is exempt: skip the no_progress increment and
 continue; build the package anyway and dispatch the noop reviewer (write
 the PENDING marker below as usual).
@@ -230,7 +244,8 @@ so a tick that runs out of time here resumes at the review, not at a new
 attempt. If elapsed ≥ limit → `STOPPED` reason `elapsed`, task stays
 `in_progress`, stop.
 
-Route seat `reviewer`. Dispatch `$SKILL/seats/reviewer.md` with `[BRIEF_FILE]`,
+Route seat `reviewer` (with `--avoid` as in **Routing a seat** step 3).
+Dispatch `$SKILL/seats/reviewer.md` with `[BRIEF_FILE]`,
 `[REPORT_FILE]`, `[DIFF_FILE]`, `[GLOBAL_CONSTRAINTS]` (the task's
 acceptance criteria plus any implementer concerns, verbatim). Store the
 handle in `seat-reviewer.json`.
@@ -285,24 +300,28 @@ For each round up to `fix_rounds_max`:
    `git status --porcelain` check for uncommitted work).
 4. After the seat returns, take the after snapshot
    (`after-fix<round>.json`) and run `snapshot.py scope` as in step 8. A
-   violation stops as in step 8.
+   violation stops as in step 8, with `$FIX_BASE` as the `base <sha>` in the
+   detail.
 5. Fresh check as in step 9. `FAIL` → `RETRY`; `UNKNOWN` → blocked.
 6. `$H/review_package.py $FIX_BASE $(git rev-parse HEAD) .loop/sdd/<task_id>/review-<attempt>-fix<round>.md`.
    If `empty` is true, the fix committed nothing: apply the empty-package
    rule of step 10 (delete `review.json`, bump `no_progress`, `RETRY` or
-   `STOPPED` reason `no_progress`). A noop implementer seat is exempt: skip
-   the no_progress increment and continue; build the package anyway and
-   dispatch the noop reviewer.
+   `STOPPED` reason `no_progress`). Step 8's empty-`changed` bump never
+   covers a fix round, so an empty fix package always bumps once. A noop
+   implementer seat is exempt: skip the no_progress increment and continue;
+   build the package anyway and dispatch the noop reviewer.
    Otherwise rewrite `review.json` with verdict `FIX`, the current HEAD,
    `fix_base: $FIX_BASE`, `pending_rereview: true`, and `fix_round` left at
    its PREVIOUS value (it advances only in step 8, after the re-review is
    read).
-7. Route seat `reviewer`. If the routed backend matches the stored reviewer
-   handle's backend, resume it using `$SKILL/seats/re-reviewer.md`; if it
-   differs, dispatch fresh on the routed backend using the template's
-   fresh-dispatch path and overwrite the handle file. Either way fill
-   `[BRIEF_FILE]`, `[REPORT_FILE]`, `[DIFF_FILE]` (the fix package path) and
-   `[FINDINGS]` (the open list, from `findings.md`).
+7. Route seat `re_reviewer` (with `--avoid` as in **Routing a seat** step 3).
+   Keep the stored reviewer handle (`seat-reviewer.json`) only when the
+   routed backend equals the handle's backend: resume it using
+   `$SKILL/seats/re-reviewer.md`. Otherwise dispatch fresh on the routed
+   backend using the re-reviewer template's fresh-dispatch path and
+   overwrite the handle file. Either way fill `[BRIEF_FILE]`,
+   `[REPORT_FILE]`, `[DIFF_FILE]` (the fix package path) and `[FINDINGS]`
+   (the open list, from `findings.md`).
 8. Persist the reply verbatim to
    `.loop/sdd/<task_id>/review-<attempt>-fix<round>-reply.md`. Update the
    open list: remove findings the reply marks `ADDRESSED` under
@@ -333,7 +352,9 @@ as your only output.
 ## Routing a seat
 
 1. `$H/quota.py read > .loop/quota.json`.
-2. For a side whose reading is `null` or whose `age_seconds` exceeds
+2. If the seat being routed is `noop` (its config `backend` in `loop.json` is
+   `noop`), skip this step entirely: no refresh, no probe. Otherwise, for a
+   side whose reading is `null` or whose `age_seconds` exceeds
    `routing.stale_after_seconds`, and which is NOT present in
    `.loop/quota-override.json` with a future `resets_at` (those are known
    exhausted; skip the refresh):
@@ -347,12 +368,19 @@ as your only output.
 3. `$H/quota.py choose --readings .loop/quota.json --config loop.json --seat <seat> --override .loop/quota-override.json --seat-overrides '<task seat_overrides JSON, or {} when none>'`.
    Pass `--override` even if the file does not exist; the helper treats a
    missing file as `{}`.
+   For seats `reviewer` and `re_reviewer`, append `--avoid <backend>`, where
+   `<backend>` is the `backend` field of
+   `.loop/sdd/<task_id>/seat-implementer.json`. If that file does not exist
+   (noop implementer, or no attempt yet), omit `--avoid`; under `balance`
+   the helper then prefers the side the implementer did not use when quota
+   allows, and under `fixed` it ignores `--avoid`.
 4. `backend: null` → outcome `STOPPED` reason `quota`, task unchanged
    (inbox reason `quota`, detail "no backend available", unblock "wait for
-   the reset, or lower switch_at"), stop.
+   the reset, or raise switch_at"), stop.
 5. Append `{"seat": ..., "backend": ..., "reason": ..., "blind": ..., "quota_before": <readings>}`
    to the record's `seats`. After the seat returns, run `quota.py read` again
-   and add `quota_after` and `status`.
+   and add `quota_after` and `status`. `status` is the seat's first-line
+   token (`DONE`, `APPROVED`, ...), or `"error"` on a failed dispatch.
 6. `backend: noop` → run the matching `noop.py` command instead of
    dispatching, and treat its stdout as the reply.
 
@@ -369,7 +397,7 @@ limit:
 3. If the failing dispatch was a resumed handle (fix loop), the other backend
    has no handle: dispatch FRESH there using the matching template's
    fresh-dispatch path with `[BRIEF_FILE]`, `[REPORT_FILE]`, the open
-   findings, and for a re-reviewer also `[DIFF_FILE]` (the current fix
-   package path). If routing yields `null` → `STOPPED` reason `quota`, task stays
+   findings, and for a re-reviewer (seat `re_reviewer`) also `[DIFF_FILE]`
+   (the current fix package path). If routing yields `null` → `STOPPED` reason `quota`, task stays
    `in_progress`, `review.json` keeps verdict `FIX`.
 4. Never retry the same backend inside the tick.
