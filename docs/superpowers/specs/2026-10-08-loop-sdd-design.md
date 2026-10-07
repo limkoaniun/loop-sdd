@@ -1,7 +1,7 @@
 # loop-sdd: design
 
 Date: 2026-10-08
-Status: approved in conversation, awaiting written review
+Status: approved 2026-10-08; built on branch feat/loop-sdd; see Amendments at the end
 
 ## Purpose
 
@@ -338,3 +338,45 @@ cron; stopping `/loop` stops the loop.
 Worktree per task, PR gating, parallel ticks, more than two backends,
 a Python controller, hooks that enforce limits in code. All are
 additive on top of the ledger and run-record formats defined here.
+
+## Amendments from the 2026-10-08 build
+
+Recorded after implementation and review. Each supersedes the text above
+where they differ.
+
+- **Tick step order.** Frontmatter is edited before the snapshot, never
+  inside the window: route the implementer seat, then `task.py set`
+  (status and attempts), then take the before-snapshot and record BASE,
+  then dispatch. The budget check runs after the resume checks.
+- **Review state.** `.loop/sdd/<id>/review.json` holds `verdict`, `base`,
+  `head`, `attempt`, `fix_round`, `fix_base`, `pending_rereview`. The
+  review base is the HEAD before the task's first attempt
+  (`base.txt`), so every attempt's commits are reviewed. Reviewer and
+  re-reviewer replies are persisted by the controller to
+  `review-<attempt>[-fix<round>]-reply.md`; the open list lives in
+  `findings.md`. `fix_round` advances only after a re-review reply.
+- **Empty package.** An empty review package deletes the marker and counts
+  as no progress. Noop seats are exempt, and task `seat_overrides` are
+  ignored when the configured seat is noop.
+- **Check evidence.** Exit 1 is FAIL only when the output matches
+  `check_ran_marker` (default `passed|failed|error`); otherwise UNKNOWN.
+  `init` runs the check once and refuses unless it can run.
+- **Routing.** Under `balance`, with no known side under `switch_at`, the
+  result is `null` (quota); blind picks exist only under `fixed` as
+  `backend`. Malformed override entries exclude their backend (fail
+  closed). The refresh probe is skipped for an overridden backend.
+- **Seat replies.** First line is an exact token (`Status: ...`,
+  `Verdict: ...`); the controller matches whole tokens. A Codex
+  implementer that cannot write `.git` replies
+  `Commits: none (sandbox); subject: ...` and the controller commits the
+  allowed paths on its behalf. After any other reply the allowed paths
+  must be clean, or it is a seat failure; a dirty tree before an attempt
+  is UNKNOWN.
+- **Helper failures.** Any non-zero helper exit a step does not map is
+  UNKNOWN with the task unchanged and the lock released.
+- **Validation.** `task.py` validates `seat_overrides` (seat names,
+  backends in {claude, codex}, backend ≠ fallback). `loopcfg.py`
+  validates the optional `check_ran_marker` regex.
+- **Helper names.** Helpers are `bin/<name>.py`; `review-package` is
+  `review_package.py`. Added: `loopcfg.py`, `task.py`, `record.py`,
+  `noop.py`, `statusline_patch.py`.
