@@ -34,7 +34,7 @@ PR-based gating. Both are additive later.
 ## Layout
 
 ```
-loop-sdd-lab/
+loop-sdd/
   .claude/skills/loop-sdd/
     SKILL.md                 entry: init | tick | status
     actions/init.md          scaffold .loop/, validate loop.json, write statusline cache hook
