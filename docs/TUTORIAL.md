@@ -8,6 +8,11 @@ section says what you type, what you should see, and what it means.
 Commands that start with `/` are typed inside a Claude Code session started
 in your project. Everything else is a shell command.
 
+If you want the whole path on one picture before reading, this is it. The
+section numbers below follow the boxes top to bottom.
+
+![loop-sdd workflow diagram](diagrams/workflow.png)
+
 ## 1. Install
 
 ### Before you start

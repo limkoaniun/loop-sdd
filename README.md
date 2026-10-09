@@ -10,6 +10,13 @@ thread, and the choice follows how much of each plan you have left.
 
 New here? Read [docs/TUTORIAL.md](docs/TUTORIAL.md) for a step-by-step walkthrough.
 
+![loop-sdd workflow from a coder's view: install, set up, write task, dry run, start loop, then implement, test, review and done run inside the loop until an inbox item hands back to you](docs/diagrams/workflow.png)
+
+The picture above is the whole workflow from your side of the keyboard: the
+commands you type on the left, the git moments on the right, and the dashed
+box in the middle is what the loop does on its own. Source page:
+[`docs/diagrams/workflow.html`](docs/diagrams/workflow.html).
+
 ## Install
 
 From a clone of this repo:

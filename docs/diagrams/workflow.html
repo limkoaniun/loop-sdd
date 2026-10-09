@@ -1,0 +1,228 @@
+<title>Loop-SDD Workflow</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&display=swap">
+<style>
+/* Layout: one tall hand-drawn flowchart on a chalkboard-dark ground, centered; the SVG scrolls sideways in its own box on phones. Single dark theme by choice, to match the Excalidraw reference. */
+:root{
+  --bg:#131313; --ink:#ececec; --muted:#9e9e9e;
+  --red:#f87171; --green:#4ade80; --blue:#60a5fa; --term:#2f7a46; --git:#e5484d;
+  --hand:'Kalam','Comic Sans MS','Segoe Print','Bradley Hand',cursive;
+  color-scheme:dark;
+}
+body{background:var(--bg);color:var(--ink);font-family:var(--hand);margin:0;padding-block:20px 56px;padding-inline:16px}
+.wrap{max-width:1300px;margin:0 auto}
+.scroller{overflow-x:auto;-webkit-overflow-scrolling:touch}
+svg{display:block;width:100%;min-width:900px;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:center;margin-top:18px;font-size:18px;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:8px;min-width:0}
+.sw{width:22px;height:16px;border:1.5px solid var(--ink);display:inline-block;flex:none}
+.sw.dash{border-style:dashed}
+.sw.term{background:var(--term);border-color:#9adfb0}
+.sw.dia{transform:rotate(45deg) scale(.8)}
+.bar{display:flex;justify-content:center;gap:12px;margin-top:14px}
+button{font:inherit;font-size:17px;color:var(--ink);background:transparent;border:1.5px solid var(--muted);border-radius:6px;padding:6px 14px;cursor:pointer}
+button:hover,button:focus-visible{border-color:var(--ink);outline:none}
+#msg{color:var(--muted);font-size:16px;text-align:center;min-height:1.4em;margin-top:6px}
+</style>
+
+<div class="wrap">
+  <div class="scroller"><svg id="d" viewBox="0 0 1300 2840" role="img" aria-label="Loop-SDD workflow flowchart from a coder's perspective"></svg></div>
+  <div class="legend">
+    <span><i class="sw term"></i>what you type</span>
+    <span><i class="sw dash"></i>what the loop does on its own</span>
+    <span><i class="sw dia"></i>a decision the loop makes</span>
+    <span><i class="sw" style="border-color:#e5484d"></i>git</span>
+  </div>
+  <div class="bar"><button id="copy" type="button">Copy as SVG</button></div>
+  <div id="msg"></div>
+</div>
+
+<script src="https://unpkg.com/roughjs@4.6.6/bundled/rough.js"></script>
+<script>
+(function(){
+  const NS='http://www.w3.org/2000/svg';
+  const svg=document.getElementById('d');
+  const rc=(window.rough&&rough.svg)?rough.svg(svg):null;
+  const INK='#ececec', MUTED='#9e9e9e', RED='#f87171', GREEN='#4ade80', BLUE='#60a5fa', TERM='#2f7a46', GIT='#e5484d';
+  const FONT="'Kalam','Comic Sans MS','Segoe Print','Bradley Hand',cursive";
+  const base={stroke:INK,strokeWidth:1.6,roughness:1.1,bowing:1.2,fill:'none',seed:7};
+
+  function el(name,attrs){const e=document.createElementNS(NS,name);for(const k in attrs)e.setAttribute(k,attrs[k]);return e;}
+  let target=svg;const grp=el('g',{transform:'translate(0,240)'});
+  function add(n){target.appendChild(n);return n;}
+
+  function rect(x,y,w,h,o={}){
+    if(rc) return add(rc.rectangle(x,y,w,h,Object.assign({},base,o)));
+    return add(el('rect',{x,y,width:w,height:h,fill:o.fill&&o.fill!=='none'?o.fill:'none',stroke:o.stroke||INK,'stroke-width':1.6}));
+  }
+  function poly(pts,o={}){
+    if(rc) return add(rc.polygon(pts,Object.assign({},base,o)));
+    return add(el('polygon',{points:pts.map(p=>p.join(',')).join(' '),fill:o.fill&&o.fill!=='none'?o.fill:'none',stroke:o.stroke||INK,'stroke-width':1.6}));
+  }
+  function line(x1,y1,x2,y2,o={}){
+    if(rc) return add(rc.line(x1,y1,x2,y2,Object.assign({},base,o)));
+    return add(el('line',{x1,y1,x2,y2,stroke:o.stroke||INK,'stroke-width':1.6,'stroke-dasharray':o.strokeLineDash?o.strokeLineDash.join(' '):''}));
+  }
+  function circle(cx,cy,d,o={}){
+    if(rc) return add(rc.circle(cx,cy,d,Object.assign({},base,o)));
+    return add(el('circle',{cx,cy,r:d/2,fill:o.fill||'none',stroke:o.stroke||INK}));
+  }
+  function diamond(cx,cy,w,h,o={}){return poly([[cx,cy-h/2],[cx+w/2,cy],[cx,cy+h/2],[cx-w/2,cy]],o);}
+  function head(x,y,ang,o={}){
+    const L=14,a=Math.PI/7;
+    line(x,y,x-L*Math.cos(ang-a),y-L*Math.sin(ang-a),o);
+    line(x,y,x-L*Math.cos(ang+a),y-L*Math.sin(ang+a),o);
+  }
+  function arrow(x1,y1,x2,y2,o={}){line(x1,y1,x2,y2,o);head(x2,y2,Math.atan2(y2-y1,x2-x1),o);}
+  function path(pts,o={}){for(let i=1;i<pts.length;i++)line(pts[i-1][0],pts[i-1][1],pts[i][0],pts[i][1],o);
+    const n=pts.length;head(pts[n-1][0],pts[n-1][1],Math.atan2(pts[n-1][1]-pts[n-2][1],pts[n-1][0]-pts[n-2][0]),o);}
+
+  // text: lines = [{t,fill,size,weight,gap}]
+  function text(x,y,lines,o={}){
+    const t=add(el('text',{x,y,'text-anchor':o.anchor||'middle','font-family':FONT,fill:o.fill||INK,'dominant-baseline':'middle'}));
+    if(o.rotate)t.setAttribute('transform',`rotate(${o.rotate} ${x} ${y})`);
+    let dy=0;
+    lines.forEach((ln,i)=>{
+      const L=typeof ln==='string'?{t:ln}:ln;
+      const size=L.size||o.size||22;
+      const ts=el('tspan',{x,dy:i===0?0:(L.gap||size*1.25),'font-size':size,'font-weight':L.weight||o.weight||400,fill:L.fill||o.fill||INK});
+      ts.textContent=L.t;t.appendChild(ts);
+    });
+    return t;
+  }
+
+  // icons
+  function termIcon(x,y){rect(x,y,32,24,{fill:TERM,fillStyle:'solid',stroke:'#9adfb0',roughness:.8});text(x+16,y+13,[{t:'>_',size:14,weight:700}],{fill:'#fff'});}
+  function gitIcon(cx,cy){diamond(cx,cy,30,30,{fill:GIT,fillStyle:'solid',stroke:GIT,roughness:.6});circle(cx,cy-5,7,{fill:'#fff',fillStyle:'solid',stroke:'#fff',roughness:.4});line(cx,cy-2,cx,cy+9,{stroke:'#fff',strokeWidth:2,roughness:.3});}
+  function thumb(cx,cy,up){circle(cx,cy,30,{fill:up?'#22a559':GIT,fillStyle:'solid',stroke:up?'#22a559':GIT,roughness:.5});text(cx,cy+1,[{t:up?'👍':'👎',size:16}]);}
+  function checkIcon(x,y){rect(x,y,30,24,{fill:'#3a4a7a',fillStyle:'solid',stroke:'#8fa6e8',roughness:.6});text(x+15,y+13,[{t:'✓',size:15,weight:700}],{fill:'#4ade80'});}
+
+  // center box helper
+  const CX=650,W=340,H=130;
+  function box(cy,title,lines,o={}){
+    rect(CX-W/2,cy-H/2,W,H,o.stroke?{stroke:o.stroke}:{});
+    const n=lines.length;
+    text(CX,cy-(n?22:0),[{t:title,size:30,weight:700}]);
+    if(n)text(CX,cy+16,lines,{size:18});
+    if(o.icon)o.icon(CX-W/2+14,cy-H/2+12);
+    return cy;
+  }
+  function sideBox(cx,cy,title,lines,o={}){
+    const w=320,h=120;
+    rect(cx-w/2,cy-h/2,w,h,o.stroke?{stroke:o.stroke}:{});
+    text(cx+10,cy-20,[{t:title,size:26,weight:700}]);
+    text(cx+10,cy+16,lines,{size:16});
+    if(o.icon)o.icon(cx-w/2+12,cy-h/2+12);
+  }
+  function left(y,cmd,sub){const x=440;termIcon(x-32-text_w(cmd)-12,y-12);text(x,y,[{t:cmd,size:24}],{anchor:'end'});if(sub)text(x,y+30,[{t:sub,size:17}],{anchor:'end',fill:MUTED});}
+  function text_w(s){return s.length*12.2;}
+  function right(y,lines,icon){const x=860;if(icon==='git'){gitIcon(x+14,y);text(x+40,y,lines,{anchor:'start',size:19});}else text(x,y,lines,{anchor:'start',size:19});}
+
+  // ---------- title
+  text(CX,56,[{t:'LOOP-SDD WORKFLOW',size:40,weight:700}]);
+  text(CX,96,[{t:"a coder's view: what you type, what the loop does, where it hands back",size:18}],{fill:MUTED});
+
+  // ---------- INSTALL (once per machine)
+  box(190,'INSTALL',[{t:'once per machine, any project'},{t:'symlinks ~/.claude/skills/loop-sdd',fill:MUTED}],{icon:termIcon});
+  left(190,'./install.sh --user','from your clone of the loop-sdd repo');
+  text(860,170,[{t:'git clone github.com/limkoaniun/loop-sdd',size:19},{t:'then cd your-project && claude',size:19},{t:'restart Claude Code: /loop-sdd is in the slash menu',size:17,fill:MUTED}],{anchor:'start'});
+  arrow(CX,190+H/2,CX,355);
+  svg.appendChild(grp);target=grp;
+
+  // ---------- column y positions
+  const A=180,B=400,C=620,D=840,E=1070,F=1280,G=1480,Hh=1680,I=1900,J=2130,K=2350;
+
+  // the loop region
+  rect(14,985,1226,1035,{strokeLineDash:[10,9],stroke:MUTED,roughness:.9});
+  text(34,1010,[{t:'THE LOOP RUNS THIS EVERY TICK. YOU DO NOT.',size:19,weight:700}],{anchor:'start',fill:MUTED});
+
+  // ---------- A SETUP
+  box(A,'SET UP',[{t:'install skill, init project'},{t:'loop.json + .loop/ created',fill:MUTED}],{icon:termIcon});
+  left(A,'/loop-sdd init','typed by you, inside Claude Code');
+  right(A,[{t:'Branch off main first'},{t:'run it in the project, not the skill repo',fill:MUTED}],'git');
+  arrow(CX,A+H/2,CX,B-H/2);
+
+  // ---------- B WRITE TASK
+  box(B,'WRITE TASK',[{t:'tasks/001-slug.md'},{t:'Status: pending',fill:RED}]);
+  text(440,B,[{t:'✎  your editor',size:24}],{anchor:'end'});
+  text(440,B+30,[{t:'acceptance criteria name the test',size:17}],{anchor:'end',fill:MUTED});
+  right(B,[{t:'tasks/ is outside allowed_paths,'},{t:'so the AI cannot mark it done',fill:MUTED}]);
+  arrow(CX,B+H/2,CX,C-H/2);
+
+  // ---------- C DRY RUN
+  box(C,'DRY RUN',[{t:'seats set to noop, one tick'},{t:'no code written',fill:MUTED}],{icon:checkIcon});
+  left(C,'/loop-sdd tick','then reset task to pending');
+  right(C,[{t:'ledger: 001 attempt 1 -> PASS'},{t:'proves the plumbing works',fill:MUTED}]);
+  arrow(CX,C+H/2,CX,D-H/2);
+
+  // ---------- D START LOOP
+  box(D,'START LOOP',[{t:'one bounded attempt per tick'},{t:'every 2 minutes',fill:MUTED}],{icon:termIcon});
+  left(D,'/loop 2m /loop-sdd tick','then walk away');
+  arrow(CX,D+H/2,CX,E-H/2);
+
+  // ---------- E IMPLEMENT
+  box(E,'IMPLEMENT',[{t:'fresh Claude or Codex seat'},{t:'then scope check vs allowed_paths',fill:MUTED}]);
+  right(E-8,[{t:'seat routed by quota left'},{t:'Max 20x vs Codex 5x',fill:MUTED}]);
+  arrow(CX,E+H/2,CX,F-H/2);
+
+  // ---------- F TEST + fail branch
+  box(F,'TEST',[{t:'your check_command'},{t:'pytest, cargo test, npm test',fill:MUTED}],{icon:checkIcon});
+  diamond(1060,F,210,150);thumb(1060,F-38,false);text(1060,F+14,[{t:'FAILS',size:24,weight:700}]);
+  arrow(CX+W/2,F-10,955,F);
+  sideBox(1060,1480,'RETRY',[{t:'attempts + 1, same task'},{t:'next tick, fresh seat',fill:MUTED}]);
+  arrow(1060,F+75,1060,1420);
+  arrow(930,1420,CX+W/2+6,E+40);
+  text(1075,1330,[{t:'past max_attempts',size:15},{t:'-> blocked, inbox',size:15}],{fill:MUTED,anchor:'start'});
+
+  // ---------- G PASSES
+  diamond(CX,G,220,150);thumb(CX,G-38,true);text(CX,G+14,[{t:'PASSES',size:24,weight:700}]);
+  arrow(CX,F+H/2,CX,G-75);
+  arrow(CX,G+75,CX,Hh-H/2);
+
+  // ---------- H REVIEW + fix branch
+  box(Hh,'REVIEW',[{t:'reviewer seat reads the diff'},{t:'the other model, if quota allows',fill:MUTED}],{stroke:BLUE});
+  diamond(190,Hh,210,150,{stroke:BLUE});thumb(190,Hh-38,false);text(190,Hh+14,[{t:'NEEDS',size:22,weight:700},{t:'FIX',size:22,weight:700,gap:24}]);
+  arrow(CX-W/2,Hh-10,296,Hh);
+  sideBox(190,1880,'FIX ROUND',[{t:'same seat fixes findings'},{t:'re-review, at most 3 rounds',fill:MUTED}],{stroke:BLUE});
+  arrow(190,Hh+75,190,1820);
+  arrow(340,1822,CX-W/2-6,Hh+40);
+
+  // ---------- I DONE
+  box(I,'TASK DONE',[{t:'tests green + review approved'},{t:'Status: done',fill:GREEN}]);
+  arrow(CX,Hh+H/2,CX,I-H/2);
+  right(I-10,[{t:'Commits already on your branch'},{t:'next tick picks the next pending task',fill:MUTED}],'git');
+  arrow(CX,I+H/2,CX,J-H/2);
+
+  // ---------- J WATCH + inbox branch
+  box(J,'WATCH',[{t:'inbox first, then task table'},{t:'ledger tail, last run',fill:MUTED}],{icon:termIcon});
+  left(J,'/loop-sdd status','any time, from any session');
+  diamond(1060,J,210,150);text(1060,J-14,[{t:'INBOX',size:24,weight:700},{t:'ITEM?',size:24,weight:700,gap:28}]);
+  arrow(CX+W/2,J-10,955,J);
+  sideBox(1060,2330,'YOU UNBLOCK',[{t:'blocked / scope / quota / fix cap'},{t:'fix the cause, set status: pending',fill:MUTED}]);
+  arrow(1060,J+75,1060,2270);
+  path([[1210,2300],[1262,2300],[1262,D],[CX+W/2+6,D]],{strokeLineDash:[8,8]});
+  text(1284,1560,[{t:'the loop picks it up again',size:16}],{fill:MUTED,rotate:-90});
+  arrow(CX,J+H/2,CX,K-H/2);
+
+  // ---------- K SHIP
+  box(K,'MERGE + PUSH',[{t:'stop /loop first'},{t:'PR if working with a team',fill:MUTED}],{icon:(x,y)=>gitIcon(x+14,y+12)});
+  text(440,K,[{t:'⌘ stop /loop',size:24}],{anchor:'end'});
+  text(440,K+30,[{t:'nothing runs until you start it again',size:17}],{anchor:'end',fill:MUTED});
+
+  // ---------- footer
+  text(CX,2480,[{t:'🔒  The controller never writes code. Tests pass first, then a reviewer approves, then and only then: done.',size:19}],{fill:MUTED});
+  text(CX,2520,[{t:'👤  Only a human moves a task out of blocked or done. One attempt per tick, so it is safe to leave running.',size:19}],{fill:MUTED});
+  text(CX,2566,[{t:'docs/TUTORIAL.md in the loop-sdd repo walks each step with the output you should see.',size:16}],{fill:MUTED});
+
+  // copy as svg
+  const btn=document.getElementById('copy'),msg=document.getElementById('msg');
+  btn.addEventListener('click',()=>{
+    const clone=svg.cloneNode(true);
+    clone.setAttribute('xmlns',NS);
+    clone.setAttribute('style','background:#131313;font-family:'+FONT);
+    const s='<?xml version="1.0" encoding="UTF-8"?>\n'+new XMLSerializer().serializeToString(clone);
+    const done=()=>{msg.textContent='SVG copied. Paste it into a file like docs/workflow.svg.';};
+    const fail=()=>{msg.textContent='Clipboard blocked here. Select the diagram text below and copy it.';const ta=document.createElement('textarea');ta.value=s;ta.style.cssText='width:100%;height:120px;margin-top:8px;font-size:11px';msg.appendChild(ta);ta.select();};
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(s).then(done,fail);else fail();
+  });
+})();
+</script>
